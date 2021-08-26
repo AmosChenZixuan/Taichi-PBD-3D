@@ -1,7 +1,8 @@
 import taichi as ti # 0.7.29
 import numpy as np
 from numpy.linalg import inv
-from scipy.linalg import sqrtm
+from scipy.linalg import sqrtm, norm
+from scipy.spatial.transform import Rotation
 
 ti.init(arch=ti.gpu)
 
@@ -23,6 +24,7 @@ CM = ti.Vector.field(3, ti.f32, shape=())
 Q  = ti.Vector.field(3, ti.f32, shape=8)
 Q0 = ti.Vector.field(3, ti.f32, shape=8)
 Apq = ti.Matrix.field(3, 3, dtype=ti.f32, shape=())
+Aqq = ti.Matrix.field(3, 3, dtype=ti.f32, shape=())
 R   = ti.Matrix.field(3, 3, dtype=ti.f32, shape=())
 ALPHA = ti.field(ti.f32, shape=())
 ALPHA[None] = 1.
@@ -43,19 +45,23 @@ def initCamera():
     scale[None] = 1.
 
 def init():
+    V.fill(0)
+    P.fill(0)
     # cube
     X[0] = 0.4, 0.6, 0.4
     X[1] = 0.4, 0.6, 0.6
     X[2] = 0.6, 0.6, 0.6
     X[3] = 0.6, 0.6, 0.4
-    X[4] = 0.4, 0.4, 0.4
-    X[5] = 0.4, 0.4, 0.6
-    X[6] = 0.6, 0.4, 0.6
-    X[7] = 0.6, 0.4, 0.4
+    X[4] = 0.3, 0.4, 0.4
+    X[5] = 0.3, 0.4, 0.6
+    X[6] = 0.6, 0.5, 0.6
+    X[7] = 0.6, 0.5, 0.4
     initP()
     updateCM()
     updateQ()
     initQ0()
+    calcApq()
+    initAqq()
     #floor
     X[8]  = 0., 0., 0.
     X[9]  = 0., 0., 1.
@@ -69,6 +75,10 @@ def init():
 def initQ0():
     for i in ti.static(range(8)):
         Q0[i] = Q[i]
+
+def initAqq():
+    A = Apq[None].value.to_numpy()
+    Aqq[None] = ti.Vector(inv(A))
 
 @ti.kernel
 def updateCM():
@@ -96,10 +106,52 @@ def calcApq():
         A += Q[i] @ Q0[i].transpose()
     Apq[None] = A
 
-def calcR():
+def calcR_polar():
+    # R = AS^-1     S = AA^T ** .5
     A = Apq[None].value.to_numpy()
     S = sqrtm(A.T@A)
     R[None] = ti.Vector(A @ inv(S))
+    print(Rotation.from_matrix(A @ inv(S)).as_quat())
+
+def angle_axis(direction, angle):
+    result = np.array([0., 0., 0., 1.])
+
+    sin = np.sin(angle * .5)
+    cos = np.cos(angle * .5)
+
+    result[:-1] = direction * sin
+    result[3]  = cos
+    return result
+
+def quaternion(float4):
+    return Rotation.from_quat(float4)
+
+
+def calcR_extract():
+    A = Apq[None].value.to_numpy()
+    A = A.T @ Aqq[None].value.to_numpy()
+    q = np.array([0., 0., 0., 1.])
+
+    for _ in range(10):
+        rot = quaternion(q)
+        r = rot.as_matrix()
+        omega_numerator = np.cross(r[:,0], A[:,0]) + \
+                          np.cross(r[:,1], A[:,2]) + \
+                          np.cross(r[:,2], A[:,2])
+        omega_denom = 1. / abs(
+            np.dot(r[:,0], A[:,0]) + \
+            np.dot(r[:,1], A[:,1]) + \
+            np.dot(r[:,2], A[:,2])
+        ) + 1.e-9
+        omega = omega_numerator * omega_denom
+        w = norm(omega)
+        if w < 1.e-9:
+            break
+        q = (quaternion(angle_axis(omega/w, w)) * rot).as_quat()
+        q = q / norm(q)
+    print(q)
+    R[None] = ti.Vector(quaternion(q).as_matrix())
+
 
 @ti.kernel
 def updateDelta():
@@ -111,7 +163,10 @@ def solve():
     updateCM()
     updateQ()
     calcApq()
-    calcR()
+    if method:
+        calcR_extract()
+    else:
+        calcR_polar()
     updateDelta()
 
 #
@@ -123,11 +178,19 @@ def apply_force(mouse_x: ti.f32, mouse_y: ti.f32, attract: ti.i32):
         V[i] += GRAVITY * DeltaT
         P[i]  = X[i] + V[i] * DeltaT
 
+        # mouse interaction
+        if attract:
+            P[0] = mouse_x, mouse_y, P[0][2]
+
 @ti.kernel
 def update():
     for i in ti.static(range(8)):
         V[i] = (P[i] - X[i]) / DeltaT * .99
         X[i] = P[i]
+    # pinned
+    X[7] = 0.6, 0.5, 0.4
+    P[7] = 0.6, 0.5, 0.4
+    V[7] = 0., 0., 0.
 
 @ti.kernel
 def box_confinement():
@@ -136,7 +199,7 @@ def box_confinement():
             P[i][1] = 0.
 
 def step():
-    apply_force(0.,0.,0)
+    apply_force(mouse_pos[0], mouse_pos[1], attract)
     box_confinement()
     solve()
     update()
@@ -157,6 +220,10 @@ def project():
 gui = ti.GUI('MPM3D', background_color=0x112F41)
 initCamera()
 init()
+
+method = True
+attract = 0
+mouse_pos = (0, 0)
 while gui.running and not gui.get_event(gui.ESCAPE):
     project()
     pos = view.to_numpy()
@@ -188,6 +255,18 @@ while gui.running and not gui.get_event(gui.ESCAPE):
         ALPHA[None] *= 1.01
     if gui.is_pressed('q'):
         ALPHA[None] /= 1.01
+    if gui.is_pressed('z'):
+        method = not method
+
+    if gui.is_pressed(ti.GUI.RMB):
+        mouse_pos = gui.get_cursor_pos()
+        attract = 1
+    elif gui.is_pressed(ti.GUI.LMB):
+        mouse_pos = gui.get_cursor_pos()
+        attract = -1
+    else:
+        attract = 0
+
     
     gui.circle(focus[None], radius=10*scale[None], color=0xff0000)
     gui.circles(pos, radius=5*scale[None], color=0x66ccff)
