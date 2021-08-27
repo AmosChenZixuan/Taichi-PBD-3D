@@ -40,10 +40,10 @@ def initP():
         P[i] = X[i]
 
 def initCamera():
-    p[None] = 0.
-    t[None] = 0.
+    p[None] = 5.
+    t[None] = 15.
     focus[None] = [0.5, 0.5, 0.5]
-    scale[None] = 1.
+    scale[None] = 0.8
 
 def init():
     V.fill(0)
@@ -175,7 +175,7 @@ def calcR_extract():
         w = norm(omega)
         if w < 1.e-9:
             break
-        q = qmul(angle_axis(omega/w, w), q)
+        q = qmul(angle_axis(omega/w, w), q)  # very important
         q = q / norm(q)
     R[None] = ti.Vector(quaternion(q).as_matrix())
 
