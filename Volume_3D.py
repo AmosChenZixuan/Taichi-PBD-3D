@@ -23,7 +23,7 @@ scale = ti.field(ti.f32, shape=())
 
 # volume 
 K = ti.field(ti.f32, shape=())   # k pressure
-TRI = ti.Vector.field(3, ti.f32, shape=4)
+TRI = ti.Vector.field(3, ti.i32, shape=4) # triangles
 # pbd
 GRAVITY = ti.Vector([0., -9.8, 0.])
 DeltaT  = 1 / 120
@@ -42,11 +42,15 @@ def initCamera():
 def init():
     V.fill(0)
     P.fill(0)
-    # cube
+    # mesh
     X[0] = 0.5, 0.5, 0.5 ;M[0] = 1.
     X[1] = 0.45, 0.4, 0.45 ;M[1] = 1.
     X[2] = 0.55, 0.4, 0.45 ;M[2] = 1.
     X[3] = 0.5, 0.4, 0.55 ;M[3] = 1.
+    TRI[0] = 0, 1, 2
+    TRI[1] = 0, 1, 3
+    TRI[2] = 0, 2, 3
+    TRI[3] = 1, 2, 3
 
     initP()
 
