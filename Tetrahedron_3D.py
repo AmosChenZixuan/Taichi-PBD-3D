@@ -205,7 +205,7 @@ def project():
     u, v = x, y * ct + z * st
     view[N] = ti.Vector([u,v]) * scale[None] + ti.Vector([0.5, 0.5])
     
-gui = ti.GUI('Tetrahedron Volume Conservation', background_color=0x112F41)
+gui = ti.GUI('Tetrahedron Constarint', background_color=0x112F41)
 initCamera()
 init()
 
