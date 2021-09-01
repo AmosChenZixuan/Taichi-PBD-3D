@@ -1,6 +1,7 @@
 import taichi as ti # 0.7.29
 import numpy as np
 from matrix3 import *
+from matrix import *
 
 import time
 
@@ -46,7 +47,7 @@ def initCamera():
 def init():
     V.fill(0)
     P.fill(0)
-    K[None] = 1.
+    K[None] = .5
     # mesh
     X[0] = 0.5, 0.5, 0.5 ;M[0] = 1.
     X[1] = 0.45, 0.4, 0.45 ;M[1] = 1.
@@ -75,13 +76,14 @@ def initConstraint():
         col1 = X[z] - X[x]
         col2 = X[w] - X[x]
 
-        InvRestMatrix[i]=setCol0(InvRestMatrix[i], col0)
-        InvRestMatrix[i]=setCol1(InvRestMatrix[i], col1)
-        InvRestMatrix[i]=setCol2(InvRestMatrix[i], col2)
+        InvRestMatrix[i]= mat3(col0, col1, col2).transpose()
 
         InvRestMatrix[i] = InvRestMatrix[i].inverse()
  
-
+@ti.func
+def clearDelta(i):
+    for j in ti.static(range(4)):
+        DELTA[i,j] = vec3()
 
 @ti.kernel
 def calcDelta():
@@ -89,13 +91,11 @@ def calcDelta():
     for ci in range(NC):
         x,y,z,w     = TET[ci]
         px,py,pz,pw = P[x], P[y], P[z], P[w]  
-        DELTA[ci,0] = vec3()
-        DELTA[ci,1] = vec3()
-        DELTA[ci,2] = vec3()
-        DELTA[ci,3] = vec3()
-        c0 = getCol0(InvRestMatrix[ci])
-        c1 = getCol1(InvRestMatrix[ci])
-        c2 = getCol2(InvRestMatrix[ci])
+        invMat      = InvRestMatrix[ci]
+        clearDelta(ci)
+        c0 = getCol0(invMat)
+        c1 = getCol1(invMat)
+        c2 = getCol2(invMat)
 
         for i in ti.static(range(3)):
             for j in ti.static(range(i+1)):
@@ -243,7 +243,8 @@ while gui.running and not gui.get_event(gui.ESCAPE):
     if gui.is_pressed('c'):
         initCamera()
     if gui.is_pressed('e'):
-        K[None] *= 1.1
+        if K[None] <= 1.:
+            K[None] *= 1.1
     if gui.is_pressed('q'):
         K[None] /= 1.1
 
