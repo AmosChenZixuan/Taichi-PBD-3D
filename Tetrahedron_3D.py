@@ -1,6 +1,8 @@
+'''
+    https://matthias-research.github.io/pages/publications/strainBasedDynamics.pdf
+'''
 import taichi as ti # 0.7.29
 import numpy as np
-from matrix3 import *
 from matrix import *
 
 import time
@@ -12,7 +14,7 @@ N = 4+4   # number of particles; plus one for floor
 X    = ti.Vector.field(3, ti.f32, shape=N)
 P    = ti.Vector.field(3, ti.f32, shape=N)
 V    = ti.Vector.field(3, ti.f32, shape=N)
-M    = ti.field(ti.f32, shape=N)
+M    = ti.field(ti.f32, shape=N)              # INVERSED mass
 view = ti.Vector.field(2, ti.f32, shape=N+1)  # plus one for focus
 edges = [
     [0,0,0, 1,2,3, 4,5,6,7, 4],
@@ -47,12 +49,12 @@ def initCamera():
 def init():
     V.fill(0)
     P.fill(0)
-    K[None] = .5
+    K[None] = 1.
     # mesh
-    X[0] = 0.5, 0.5, 0.5 ;M[0] = 1.
+    X[0] = 0.5, 0.5, 0.5   ;M[0] = 1.
     X[1] = 0.45, 0.4, 0.45 ;M[1] = 1.
     X[2] = 0.55, 0.4, 0.45 ;M[2] = 1.
-    X[3] = 0.5, 0.4, 0.55 ;M[3] = 1.
+    X[3] = 0.5, 0.4, 0.55  ;M[3] = 0.
     initP()
 
     # constraint
@@ -76,7 +78,7 @@ def initConstraint():
         col1 = X[z] - X[x]
         col2 = X[w] - X[x]
 
-        InvRestMatrix[i]= mat3(col0, col1, col2).transpose()
+        InvRestMatrix[i]= mat3(col0, col1, col2, byCol=True)
 
         InvRestMatrix[i] = InvRestMatrix[i].inverse()
  
@@ -91,53 +93,44 @@ def calcDelta():
     for ci in range(NC):
         x,y,z,w     = TET[ci]
         px,py,pz,pw = P[x], P[y], P[z], P[w]  
-        invMat      = InvRestMatrix[ci]
+        invQ           = InvRestMatrix[ci]        # constant material positon matrix, inversed
         clearDelta(ci)
-        c0 = getCol0(invMat)
-        c1 = getCol1(invMat)
-        c2 = getCol2(invMat)
+
+        p1 = py-px + DELTA[ci,1] - DELTA[ci,0]
+        p2 = pz-px + DELTA[ci,2] - DELTA[ci,0]
+        p3 = pw-px + DELTA[ci,3] - DELTA[ci,0]
+        p  = mat3(p1, p2, p3, byCol=True)      # world relative position matrix
 
         for i in ti.static(range(3)):
             for j in ti.static(range(i+1)):
-                p = mat3()
-                p = setCol0(p, py-px) #+ DELTA[ci,1] - DELTA[ci,0])
-                p = setCol1(p, pz-px) #+ DELTA[ci,2] - DELTA[ci,0])
-                p = setCol2(p, pw-px) #+ DELTA[ci,3] - DELTA[ci,0])
-
-                # fi = p*c[i] ; fj = p*c[j]
-                fi, fj = vec3(), vec3()
-                if i == 0: fi = p @ c0
-                elif i==1: fi = p @ c1
-                else     : fi = p @ c2
-                if j == 0: fj = p @ c0
-                elif j==1: fj = p @ c1
-                else     : fj = p @ c2
-                #print(i,j, fi, fj)
+                # S = F^t*F
+                fi = p @ getCol(invQ, i)
+                fj = p @ getCol(invQ, j)
                 Sij = fi.dot(fj)
-                #print(Sij)
-
+                # Derivatives of Sij
+                # d_p0_Sij = -SUM_k{d_pk_Sij}
                 d0, d1, d2, d3 = vec3(), vec3(), vec3(), vec3()
-                # for k in range(3)
-                d1 = fj * InvRestMatrix[ci][0,i] + fi * InvRestMatrix[ci][0,j]; d0 -= d1
-                d2 = fj * InvRestMatrix[ci][1,i] + fi * InvRestMatrix[ci][1,j]; d0 -= d2
-                d3 = fj * InvRestMatrix[ci][2,i] + fi * InvRestMatrix[ci][2,j]; d0 -= d3
-                #print(i, j, d0, d1, d2, d3)
-
-                vlambda = d0.norm_sqr() + d1.norm_sqr() + d2.norm_sqr() + d3.norm_sqr()
-                if abs(vlambda) > eps: 
+                d1 = fj * invQ[0,i] + fi * invQ[0,j]
+                d2 = fj * invQ[1,i] + fi * invQ[1,j]
+                d3 = fj * invQ[2,i] + fi * invQ[2,j]
+                d0 = -(d1+d2+d3)
+                # dp_k = -Lambda * invM_k * d_pk_Sij
+                # Lambda = 
+                #       (Sii - si^2) / SUM_k{invM_k * |d_pk_Sii|^2}    if i==j  ;    si: rest strech. typically 1
+                #                Sij / SUM_k{invM_k * |d_pk_Sii|^2}    if i<j
+                gradSum = d0.norm_sqr()*M[x] + d1.norm_sqr()*M[y] + d2.norm_sqr()*M[z] + d3.norm_sqr()*M[w]
+                vlambda = 0.
+                if abs(gradSum) > eps: 
                     if i == j:
-                        vlambda = (Sij-1.) / vlambda * K[None]
+                        vlambda = (Sij-1.) / gradSum * K[None]
 
                     else:
-                        vlambda = Sij / vlambda * K[None]
-
-                    DELTA[ci,0] -= vlambda * d0
-                    DELTA[ci,1] -= vlambda * d1
-                    DELTA[ci,2] -= vlambda * d2
-                    DELTA[ci,3] -= vlambda * d3
+                        vlambda = Sij / gradSum * K[None]
+                    DELTA[ci,0] -= vlambda * d0 * M[x]
+                    DELTA[ci,1] -= vlambda * d1 * M[y]
+                    DELTA[ci,2] -= vlambda * d2 * M[z]
+                    DELTA[ci,3] -= vlambda * d3 * M[w]
                     #print(vlambda * d0, vlambda * d1, vlambda * d2, vlambda * d3)
-                else:
-                    print("wtf")
 
 @ti.kernel
 def applyDelta():
@@ -150,6 +143,9 @@ def applyDelta():
         #print(DELTA[ci, 0], DELTA[ci, 1], DELTA[ci, 2],DELTA[ci, 3])
 
 def solve():
+    '''
+        Tetrahedral Constraints
+    '''
     calcDelta()
     applyDelta()
     
@@ -182,7 +178,7 @@ def update():
 def box_confinement():
     for i in range(N):
         if P[i][1] < 0.:
-            P[i][1] = 0.
+            P[i][1] = 1e-4
 
 def step():
     apply_force(mouse_pos[0], mouse_pos[1], attract)

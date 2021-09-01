@@ -6,8 +6,11 @@ def vec3(x=0., y=0., z=0.):
 def arr3(x=0., y=0., z=0.):
     return [x,y,z]
 
-def mat3(r1=arr3(),r2=arr3(),r3=arr3()):
-    return ti.Matrix([list(r1), list(r2), list(r3)])
+def mat3(v1=arr3(),v2=arr3(),v3=arr3(), byCol=False):
+    ret = ti.Matrix([list(v1), list(v2), list(v3)])
+    if byCol:
+        ret = ret.transpose()
+    return ret
 
 @ti.func
 def getCol(mat, idx):
