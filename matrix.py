@@ -45,5 +45,4 @@ if __name__ == '__main__':
     def gg():
         print(getCol(M[0,0], 1))
         print(setCol(M[0,0], 2, [8,5,2]))
-        print(M[0,0][0:3])
     gg()
