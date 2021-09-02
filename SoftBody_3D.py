@@ -58,6 +58,7 @@ DeltaT  = 1 / 240
 paused  = False
 attract = 0
 mouse_pos = (0, 0)
+RMB     = False
 
 @ti.kernel
 def initP():
@@ -240,7 +241,7 @@ gui = ti.GUI('Tetrahedron Constarint', background_color=0x112F41)
 initCamera()
 init()
 while gui.running:
-    for e in gui.get_events(ti.GUI.PRESS):
+    for e in gui.get_events():
         if e.key in [ti.GUI.ESCAPE, ti.GUI.EXIT]:
             exit()
         elif e.key == gui.SPACE:
@@ -253,10 +254,26 @@ while gui.running:
             paused = False
             step()
             paused = True
+        # stiffness
         elif e.key == 'e':
             K[None] *= 1.05
         elif e.key == 'q':
             K[None] /= 1.05
+        # scale/zoom
+        if e.key == ti.GUI.WHEEL:
+            scale[None] *= 1.01 if e.delta.y>0 else 1/1.01
+        # camera angle
+        if e.key == ti.GUI.RMB:
+            if e.type==ti.GUI.PRESS:
+                RMB = True
+                mouse_pos = e.pos
+            elif e.type==ti.GUI.RELEASE:
+                RMB = False
+        if e.type==ti.GUI.MOTION and RMB:
+            xdelta, ydelta = (ti.Vector(e.pos)-ti.Vector(mouse_pos))
+            p[None] -= xdelta * 100
+            t[None] -= ydelta * 100
+            mouse_pos = e.pos
     # no delay control
     # camera angle
     if gui.is_pressed(ti.GUI.LEFT):
@@ -267,12 +284,6 @@ while gui.running:
         t[None] += 1
     elif gui.is_pressed(ti.GUI.DOWN):
         t[None] -= 1
-    # scale/zoom
-    if gui.is_pressed(']'):
-        scale[None] *= 1.01
-    elif gui.is_pressed('['):
-        scale[None] /= 1.01
-    # camera postion
     if gui.is_pressed('w'):
         focus[None][1] += 0.01
     elif gui.is_pressed('a'):
@@ -282,20 +293,17 @@ while gui.running:
     elif gui.is_pressed('d'):
         focus[None][0] += 0.01
     # mouse interaction
-    if gui.is_pressed(ti.GUI.RMB):
+    if gui.is_pressed(ti.GUI.LMB):
         mouse_pos = gui.get_cursor_pos()
         attract = 1
-    elif gui.is_pressed(ti.GUI.LMB):
-        mouse_pos = gui.get_cursor_pos()
-        attract = -1
     else:
         attract = 0
     # render
     project()
     pos = view.to_numpy()
-    gui.circles(pos[:N], radius=5*scale[None], color=0x66ccff)
+    gui.circles(pos[:N], radius=2*scale[None], color=0x66ccff)
     gui.circle(pos[N], radius=1*scale[None], color=0xff0000)
-    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=.1*scale[None])
+    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=.5*scale[None])
     gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
     gui.show()
     # sim
