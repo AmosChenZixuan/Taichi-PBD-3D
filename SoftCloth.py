@@ -53,11 +53,15 @@ t = ti.field(ti.f32, shape=())
 focus = ti.Vector.field(3, ti.f32, shape=())
 scale = ti.field(ti.f32, shape=())
 # volume 
-NC            = len(triangulation.simplices)+2           # number of constraint
+NC            = len(triangulation.simplices)           # number of constraint
+XNC           = NC + 2                                 # extend with 2 more triangles
+NUM_C         = ti.field(ti.f32, shape=())             # number of constraint in action
+NUM_C[None] = NC
+
 K             = ti.field(ti.f32, shape=())   # stiffness
 K[None] = .8
-TRI           = ti.Vector.field(3, ti.i32, shape=NC) # Triangles
-InvRestMatrix = ti.Matrix.field(2, 2, dtype=ti.f32, shape=NC)
+TRI           = ti.Vector.field(3, ti.i32, shape=XNC) # Triangles
+InvRestMatrix = ti.Matrix.field(2, 2, dtype=ti.f32, shape=XNC)
 DELTA         = ti.Vector.field(3, ti.f32, shape=N) # postion correction cache
 counts        = ti.field(ti.i32, shape=N)
 # pbd
@@ -94,20 +98,20 @@ def init():
     initP()
 
     # constraint
-    for i in range(NC-2):
+    for i in range(NC):
         TRI[i] = triangulation.simplices[i]
         x,y,z = TRI[i]
         counts[x] += 3
         counts[y] += 3
         counts[z] += 3
     x,y,z = 0, 24, 25*25-1
-    TRI[NC-2] = x,y,z
+    TRI[NC] = x,y,z
     counts[x] += 3
     counts[y] += 3
     counts[z] += 3
 
     x,y,z = 25*25-1, 24, 25*24
-    TRI[NC-1] = x,y,z
+    TRI[NC+1] = x,y,z
     counts[x] += 3
     counts[y] += 3
     counts[z] += 3
@@ -124,7 +128,7 @@ def init():
 #
 @ti.kernel
 def initConstraint():
-    for i in range(NC):
+    for i in range(XNC):
         x,y,z = TRI[i]
         col0 = tex(X[y]) - tex(X[x])
         col1 = tex(X[z]) - tex(X[x])
@@ -139,7 +143,7 @@ def clearDelta():
 @ti.kernel
 def calcDelta():
     eps = 1e-9
-    for ci in range(NC):
+    for ci in range(NUM_C[None]):
         x,y,z     = TRI[ci]
         px,py,pz  = P[x], P[y], P[z]
         invQ           = InvRestMatrix[ci]        # constant material positon matrix, inversed
@@ -178,7 +182,7 @@ def calcDelta():
                     #print(vlambda * d0, vlambda * d1, vlambda * d2, vlambda * d3)
 @ti.kernel
 def applyDelta():
-    for ci in range(NC):
+    for ci in range(NUM_C[None]):
         x,y,z  = TRI[ci]
         P[x] += min(DELTA[x] / counts[x], .01)
         P[y] += min(DELTA[y] / counts[y], .01)
@@ -296,6 +300,10 @@ while gui.running:
             idx = picked if picked >=0 else pick(e.pos)
             if idx >= 0:
                 M[idx] = 0. if M[idx] != 0. else 1.
+        # enable extended triangles
+        if e.key == 'z':
+            NUM_C[None] = NC if NUM_C[None] != NC else XNC
+        
     # no delay control
     # camera angle
     if gui.is_pressed(ti.GUI.LEFT):
@@ -336,6 +344,7 @@ while gui.running:
     gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=1*scale[None])
     gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={iter[None]}',pos=(0,0.9), color=0xffffff)
+    gui.text(content=f"Extra Triangle Constraint:{'enabled' if NUM_C[None] == XNC else 'disabled'}",pos=(0,0.85), color=0xffffff)
     gui.show()
     # sim
     step()
