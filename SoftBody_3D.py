@@ -3,6 +3,7 @@
 '''
 import taichi as ti # 0.7.29
 import numpy as np
+from numpy.linalg import norm
 from scipy.spatial import Delaunay
 from matrix import *
 from sphere import createSphere
@@ -56,7 +57,7 @@ GRAVITY = ti.Vector([0., -9.8, 0.])
 DeltaT  = 1 / 240
 # sim
 paused  = False
-attract = 0
+picked  = -1
 mouse_pos = (0, 0)
 RMB     = False
 
@@ -184,16 +185,24 @@ def solve():
 #
 # PBD
 #
+
+def pick(mouse_pos):
+    pos = view.to_numpy() - mouse_pos
+    pos *= -1
+    dists = np.array([norm(v) for v in pos])
+    closest = int(np.argmin(dists))
+    return closest if dists[closest] < 0.1 else -1
+
 @ti.kernel
-def apply_force(mouse_x: ti.f32, mouse_y: ti.f32, attract: ti.i32):
+def apply_force(mouse_x: ti.f32, mouse_y: ti.f32, idx: ti.i32):
     for i in range(N):
         if M[i] <= 0.: continue
         V[i] += GRAVITY * DeltaT
         P[i]  = X[i] + V[i] * DeltaT
 
         # mouse interaction
-        if attract:
-            P[1] = mouse_x, mouse_y, P[1][2]
+        if idx>=0:
+            P[idx] = mouse_x, mouse_y, P[idx][2]
 
 @ti.kernel
 def update():
@@ -210,7 +219,7 @@ def box_confinement():
 
 def step():
     if not paused:
-        apply_force(mouse_pos[0], mouse_pos[1], attract)
+        apply_force(mouse_pos[0], mouse_pos[1], picked)
         box_confinement()
         for _ in range(3):
             solve()
@@ -295,9 +304,11 @@ while gui.running:
     # mouse interaction
     if gui.is_pressed(ti.GUI.LMB):
         mouse_pos = gui.get_cursor_pos()
-        attract = 1
+        if picked == -1:
+            picked = pick(mouse_pos)
     else:
-        attract = 0
+        picked = -1
+    
     # render
     project()
     pos = view.to_numpy()
