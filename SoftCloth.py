@@ -6,26 +6,34 @@ import numpy as np
 from numpy.linalg import norm
 from scipy.spatial import Delaunay
 from matrix import *
-from sphere import createSphere
+from cloth import createRandomCloth, createRectCloth
 import time
 ti.init(arch=ti.gpu)
 
+@ti.pyfunc
+def tex(p3d):
+    cp, sp = ti.cos(0), ti.sin(0)
+    ct, st = ti.cos(0), ti.sin(0)
+
+    x,y,z = p3d - ti.Vector([.5,.5,.5])
+    x, z = x * cp + z * sp, z * cp - x * sp
+    u, v = x, y * ct + z * st
+    return ti.Vector([u,v]) * 1. + ti.Vector([0.5, 0.5])
+
 # build scene objects
-center = (.5, .5, .5)
-points = [
-    center
-]
-points.extend(createSphere(10, 10, 1./5, center))
-points.extend(createSphere( 4,  4, 1./8, center))
+leftbtm = (.25, .25, .5)
+points = []
+np.random.seed(0)
+points.extend(createRectCloth(25,25,0.02, 0.02, leftbtm))
 
 
-points = np.array(points)
+points2d = np.array([tex(x) for x in points])
 N = len(points)
-triangulation = Delaunay(points)
+triangulation = Delaunay(points2d)
 edges=[[], []]
 for tet in triangulation.simplices:
-    for i in range(4):
-        for j in range(i+1, 4):
+    for i in range(3):
+        for j in range(i+1, 3):
             edges[0].append(tet[i])
             edges[1].append(tet[j])
 
@@ -48,13 +56,15 @@ scale = ti.field(ti.f32, shape=())
 NC            = len(triangulation.simplices)           # number of constraint
 K             = ti.field(ti.f32, shape=())   # stiffness
 K[None] = 1.
-TET           = ti.Vector.field(4, ti.i32, shape=NC) # Tetrahedron
-InvRestMatrix = ti.Matrix.field(3, 3, dtype=ti.f32, shape=NC)
+TRI           = ti.Vector.field(3, ti.i32, shape=NC) # Triangles
+InvRestMatrix = ti.Matrix.field(2, 2, dtype=ti.f32, shape=NC)
 DELTA         = ti.Vector.field(3, ti.f32, shape=N) # postion correction cache
 counts        = ti.field(ti.i32, shape=N)
 # pbd
 GRAVITY = ti.Vector([0., -9.8, 0.])
 DeltaT  = 1 / 240
+iter    = ti.field(ti.i32, shape=())   # solver iterations
+iter[None] = 3
 # sim
 paused  = False
 picked  = -1
@@ -85,12 +95,11 @@ def init():
 
     # constraint
     for i in range(NC):
-        TET[i] = triangulation.simplices[i]
-        x,y,z,w = TET[i]
-        counts[x] += 4
-        counts[y] += 4
-        counts[z] += 4
-        counts[w] += 4
+        TRI[i] = triangulation.simplices[i]
+        x,y,z = TRI[i]
+        counts[x] += 3
+        counts[y] += 3
+        counts[z] += 3
     initConstraint()
     
     #floor
@@ -105,15 +114,13 @@ def init():
 @ti.kernel
 def initConstraint():
     for i in range(NC):
-        x,y,z,w = TET[i]
-        col0 = X[y] - X[x]
-        col1 = X[z] - X[x]
-        col2 = X[w] - X[x]
+        x,y,z = TRI[i]
+        col0 = tex(X[y]) - tex(X[x])
+        col1 = tex(X[z]) - tex(X[x])
 
-        InvRestMatrix[i]= mat3(col0, col1, col2, byCol=True)
+        InvRestMatrix[i]= mat2(col0, col1, byCol=True)
 
         InvRestMatrix[i] = InvRestMatrix[i].inverse()
-        #print(InvRestMatrix[i])
 
 def clearDelta():
     DELTA.fill(0)
@@ -122,33 +129,31 @@ def clearDelta():
 def calcDelta():
     eps = 1e-9
     for ci in range(NC):
-        x,y,z,w     = TET[ci]
-        px,py,pz,pw = P[x], P[y], P[z], P[w]  
-        invQ        = InvRestMatrix[ci]        # constant material positon matrix, inversed
+        x,y,z     = TRI[ci]
+        px,py,pz  = P[x], P[y], P[z]
+        invQ           = InvRestMatrix[ci]        # constant material positon matrix, inversed
 
-        p1 = py-px + DELTA[y] - DELTA[x]
-        p2 = pz-px + DELTA[z] - DELTA[x]
-        p3 = pw-px + DELTA[w] - DELTA[x]
-        p  = mat3(p1, p2, p3, byCol=True)      # world relative position matrix
+        p1 = py-px #+ DELTA[ci,1] - DELTA[ci,0]
+        p2 = pz-px #+ DELTA[ci,2] - DELTA[ci,0]
+        p  = mat2(p1, p2, byCol=True)      # world relative position matrix
 
-        for i in ti.static(range(3)):
+        for i in ti.static(range(2)):
             for j in ti.static(range(i+1)):
                 # S = F^t*F;    G(Green - St Venant strain tensor) = S - I
-                fi = p @ getCol(invQ, i)
-                fj = p @ getCol(invQ, j)
+                fi = p @ getCol2(invQ, i)
+                fj = p @ getCol2(invQ, j)
                 Sij = fi.dot(fj)
                 # Derivatives of Sij
                 # d_p0_Sij = -SUM_k{d_pk_Sij}
-                d0, d1, d2, d3 = vec3(), vec3(), vec3(), vec3()
+                d0, d1, d2 = vec3(), vec3(), vec3()
                 d1 = fj * invQ[0,i] + fi * invQ[0,j]
                 d2 = fj * invQ[1,i] + fi * invQ[1,j]
-                d3 = fj * invQ[2,i] + fi * invQ[2,j]
-                d0 = -(d1+d2+d3)
+                d0 = -(d1+d2)
                 # dp_k = -Lambda * invM_k * d_pk_Sij
                 # Lambda = 
                 #       (Sii - si^2) / SUM_k{invM_k * |d_pk_Sii|^2}    if i==j  ;    si: rest strech. typically 1
                 #                Sij / SUM_k{invM_k * |d_pk_Sii|^2}    if i<j
-                gradSum = d0.norm_sqr()*M[x] + d1.norm_sqr()*M[y] + d2.norm_sqr()*M[z] + d3.norm_sqr()*M[w]
+                gradSum = d0.norm_sqr()*M[x] + d1.norm_sqr()*M[y] + d2.norm_sqr()*M[z]
                 vlambda = 0.
                 if abs(gradSum) > eps: 
                     if i == j:
@@ -156,22 +161,17 @@ def calcDelta():
 
                     else:
                         vlambda = Sij / gradSum * K[None]
-                    DELTA[x]  -= vlambda * d0 * M[x]
-                    DELTA[y]  -= vlambda * d1 * M[y]
-                    DELTA[z]  -= vlambda * d2 * M[z]
-                    DELTA[w]  -= vlambda * d3 * M[w]
+                    DELTA[x] -= vlambda * d0 * M[x]
+                    DELTA[y] -= vlambda * d1 * M[y]
+                    DELTA[z] -= vlambda * d2 * M[z]
                     #print(vlambda * d0, vlambda * d1, vlambda * d2, vlambda * d3)
-                else:
-                    print('WTF')
-
 @ti.kernel
 def applyDelta():
     for ci in range(NC):
-        x,y,z,w  = TET[ci]
-        P[x] += min(DELTA[x] / counts[x], .01) / 4
-        P[y] += min(DELTA[y] / counts[y], .01) / 4
-        P[z] += min(DELTA[z] / counts[z], .01) / 4
-        P[w] += min(DELTA[w] / counts[w], .01) / 4
+        x,y,z  = TRI[ci]
+        P[x] += min(DELTA[x] / counts[x], .01)
+        P[y] += min(DELTA[y] / counts[y], .01)
+        P[z] += min(DELTA[z] / counts[z], .01)
         #print(DELTA[ci, 0], DELTA[ci, 1], DELTA[ci, 2],DELTA[ci, 3])
 
 def solve():
@@ -221,7 +221,7 @@ def step():
     if not paused:
         apply_force(mouse_pos[0], mouse_pos[1], picked)
         box_confinement()
-        for _ in range(3):
+        for _ in range(iter[None]):
             solve()
         update()
 
@@ -246,7 +246,7 @@ def project():
 ###
 ###
 ###
-gui = ti.GUI('Tetrahedron Constarint', background_color=0x112F41)
+gui = ti.GUI('Triangle Constarint', background_color=0x112F41)
 initCamera()
 init()
 while gui.running:
@@ -280,6 +280,11 @@ while gui.running:
             p[None] -= xdelta * 100
             t[None] -= ydelta * 100
             mouse_pos = e.pos
+        # pin particle
+        if e.key == 'p':
+            idx = picked if picked >=0 else pick(e.pos)
+            if idx >= 0:
+                M[idx] = 0. if M[idx] != 0. else 1.
     # no delay control
     # camera angle
     if gui.is_pressed(ti.GUI.LEFT):
@@ -305,14 +310,21 @@ while gui.running:
             picked = pick(mouse_pos)
     else:
         picked = -1
-    
+    # iteration
+    if gui.is_pressed(']'):
+        iter[None] += 1
+    elif gui.is_pressed('['):
+        iter[None] -= 1
+
+
     # render
     project()
     pos = view.to_numpy()
-    gui.circles(pos[:N], radius=2*scale[None], color=0x66ccff)
+    gui.circles(pos[:N], radius=1*scale[None], color=0x66ccff)
     gui.circle(pos[N], radius=1*scale[None], color=0xff0000)
-    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=.5*scale[None])
+    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=1*scale[None])
     gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
+    gui.text(content=f'Iteration={iter[None]}',pos=(0,0.9), color=0xffffff)
     gui.show()
     # sim
     step()
