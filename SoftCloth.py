@@ -25,6 +25,7 @@ leftbtm = (.25, .25, .5)
 points = []
 np.random.seed(0)
 points.extend(createRectCloth(25,25,0.02, 0.02, leftbtm))
+#points.extend(createRandomCloth(25*25, leftbtm))
 
 
 points2d = np.array([tex(x) for x in points])
