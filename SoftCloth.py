@@ -53,9 +53,9 @@ t = ti.field(ti.f32, shape=())
 focus = ti.Vector.field(3, ti.f32, shape=())
 scale = ti.field(ti.f32, shape=())
 # volume 
-NC            = len(triangulation.simplices)           # number of constraint
+NC            = len(triangulation.simplices)+2           # number of constraint
 K             = ti.field(ti.f32, shape=())   # stiffness
-K[None] = 1.
+K[None] = .8
 TRI           = ti.Vector.field(3, ti.i32, shape=NC) # Triangles
 InvRestMatrix = ti.Matrix.field(2, 2, dtype=ti.f32, shape=NC)
 DELTA         = ti.Vector.field(3, ti.f32, shape=N) # postion correction cache
@@ -64,7 +64,7 @@ counts        = ti.field(ti.i32, shape=N)
 GRAVITY = ti.Vector([0., -9.8, 0.])
 DeltaT  = 1 / 240
 iter    = ti.field(ti.i32, shape=())   # solver iterations
-iter[None] = 3
+iter[None] = 15
 # sim
 paused  = False
 picked  = -1
@@ -94,12 +94,23 @@ def init():
     initP()
 
     # constraint
-    for i in range(NC):
+    for i in range(NC-2):
         TRI[i] = triangulation.simplices[i]
         x,y,z = TRI[i]
         counts[x] += 3
         counts[y] += 3
         counts[z] += 3
+    x,y,z = 0, 24, 25*25-1
+    TRI[NC-2] = x,y,z
+    counts[x] += 3
+    counts[y] += 3
+    counts[z] += 3
+
+    x,y,z = 25*25-1, 24, 25*24
+    TRI[NC-1] = x,y,z
+    counts[x] += 3
+    counts[y] += 3
+    counts[z] += 3
     initConstraint()
     
     #floor
