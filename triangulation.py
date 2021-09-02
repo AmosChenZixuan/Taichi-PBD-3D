@@ -30,16 +30,25 @@ def tex(p3d):
 # z = 2.0 * np.random.rand(10) - 1.0
 # points = np.vstack([x, y, z]).T
 points = [[.5,.5,.5]]
-deltaTheta = np.pi/6
-deltaPhi =   np.pi/3
+deltaTheta = np.pi/10
+deltaPhi =   np.pi/5
 theta,phi = 0,0
-for ring in range(6):
+for ring in range(10):
     theta += deltaTheta
-    for p in range(6):
+    for p in range(10):
         phi += deltaPhi
         x = np.sin(theta) * np.cos(phi) / 5 + 0.5
         y = np.sin(theta) * np.sin(phi) / 5 + 0.5
         z = np.cos(theta) / 5 + 0.5
+        points.append([x,y,z])
+
+for ring in range(10):
+    theta += deltaTheta
+    for p in range(10):
+        phi += deltaPhi
+        x = np.sin(theta) * np.cos(phi) / 10 + 0.5
+        y = np.sin(theta) * np.sin(phi) / 10 + 0.5
+        z = np.cos(theta) / 10 + 0.5
         points.append([x,y,z])
 points = np.array(points)
 tri = Delaunay(points)

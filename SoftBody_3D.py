@@ -5,39 +5,20 @@ import taichi as ti # 0.7.29
 import numpy as np
 from scipy.spatial import Delaunay
 from matrix import *
+from sphere import createSphere
 import time
 ti.init(arch=ti.gpu)
 
-# N = 20
-# np.random.seed(42)
-# x = .5 * np.random.rand(N) 
-# y = .5 * np.random.rand(N) + 0.5
-# z = .5 * np.random.rand(N)
-# points = np.vstack([x, y, z]).T
+# build scene objects
+center = (.5, .5, .5)
 points = [
-    [.4,.45,.4],
-    [.4,.45,.6],
-    [.6,.45,.4],
-    # [.6,.45,.6],
-    # [.4,.55,.4],
-    [.4,.55,.6],
-    [.6,.55,.4],
-    [.6,.55,.6]
+    center
 ]
-a,b = 10, 10
-deltaTheta = np.pi/a
-deltaPhi = 2*np.pi/b
-theta,phi = 0,0
-for ring in range(a):
-    theta += deltaTheta
-    for p in range(b):
-        phi += deltaPhi
-        x = np.sin(theta) * np.cos(phi) / 5 + 0.5
-        y = np.sin(theta) * np.sin(phi) / 5 + 0.5
-        z = np.cos(theta) / 5 + 0.5
-        points.append([x,y,z])
-points = np.array(points)
+points.extend(createSphere(10, 10, 1./5, center))
+points.extend(createSphere( 4,  4, 1./8, center))
 
+
+points = np.array(points)
 N = len(points)
 triangulation = Delaunay(points)
 edges=[[], []]
@@ -57,24 +38,26 @@ view = ti.Vector.field(2, ti.f32, shape=N+1)  # plus one for focus
 # add floor
 edges[0].extend([N-4,N-3,N-2,N-1, N-4])
 edges[1].extend([N-3,N-2,N-1,N-4, N-2])
-
 # camera
 p = ti.field(ti.f32, shape=())
 t = ti.field(ti.f32, shape=())
 focus = ti.Vector.field(3, ti.f32, shape=())
 scale = ti.field(ti.f32, shape=())
-
 # volume 
 NC            = len(triangulation.simplices)           # number of constraint
 K             = ti.field(ti.f32, shape=())   # stiffness
-K[None] = .5
+K[None] = 1.
 TET           = ti.Vector.field(4, ti.i32, shape=NC) # Tetrahedron
 InvRestMatrix = ti.Matrix.field(3, 3, dtype=ti.f32, shape=NC)
 DELTA         = ti.Vector.field(3, ti.f32, shape=N) # postion correction cache
 counts        = ti.field(ti.i32, shape=N)
 # pbd
 GRAVITY = ti.Vector([0., -9.8, 0.])
-DeltaT  = 1 / 120
+DeltaT  = 1 / 240
+# sim
+paused  = False
+attract = 0
+mouse_pos = (0, 0)
 
 @ti.kernel
 def initP():
@@ -183,10 +166,10 @@ def calcDelta():
 def applyDelta():
     for ci in range(NC):
         x,y,z,w  = TET[ci]
-        P[x] += DELTA[x] / counts[x]
-        P[y] += DELTA[y] / counts[y]
-        P[z] += DELTA[z] / counts[z]
-        P[w] += DELTA[w] / counts[w]
+        P[x] += min(DELTA[x] / counts[x], .01) / 4
+        P[y] += min(DELTA[y] / counts[y], .01) / 4
+        P[z] += min(DELTA[z] / counts[z], .01) / 4
+        P[w] += min(DELTA[w] / counts[w], .01) / 4
         #print(DELTA[ci, 0], DELTA[ci, 1], DELTA[ci, 2],DELTA[ci, 3])
 
 def solve():
@@ -209,7 +192,7 @@ def apply_force(mouse_x: ti.f32, mouse_y: ti.f32, attract: ti.i32):
 
         # mouse interaction
         if attract:
-            P[0] = mouse_x, mouse_y, P[0][2]
+            P[1] = mouse_x, mouse_y, P[1][2]
 
 @ti.kernel
 def update():
@@ -217,10 +200,6 @@ def update():
         if M[i] <= 0.: continue
         V[i] = (P[i] - X[i]) / DeltaT * .99
         X[i] = P[i]
-    # pinned
-    # X[7] = 0.6, 0.5, 0.4
-    # P[7] = 0.6, 0.5, 0.4
-    # V[7] = 0., 0., 0.
 
 @ti.kernel
 def box_confinement():
@@ -229,11 +208,12 @@ def box_confinement():
             P[i][1] = 1e-4
 
 def step():
-    apply_force(mouse_pos[0], mouse_pos[1], attract)
-    box_confinement()
-    for _ in range(3):
-        solve()
-    update()
+    if not paused:
+        apply_force(mouse_pos[0], mouse_pos[1], attract)
+        box_confinement()
+        for _ in range(3):
+            solve()
+        update()
 
 @ti.kernel
 def project():
@@ -253,48 +233,55 @@ def project():
     u, v = x, y * ct + z * st
     view[N] = ti.Vector([u,v]) * scale[None] + ti.Vector([0.5, 0.5])
     
+###
+###
+###
 gui = ti.GUI('Tetrahedron Constarint', background_color=0x112F41)
 initCamera()
 init()
-
-attract = 0
-mouse_pos = (0, 0)
-while gui.running and not gui.get_event(gui.ESCAPE):
-    project()
-    pos = view.to_numpy()
+while gui.running:
+    for e in gui.get_events(ti.GUI.PRESS):
+        if e.key in [ti.GUI.ESCAPE, ti.GUI.EXIT]:
+            exit()
+        elif e.key == gui.SPACE:
+            paused = not paused
+        elif e.key == 'r':
+            init()
+        elif e.key == 'c':
+            initCamera()
+        elif e.key == 't':
+            paused = False
+            step()
+            paused = True
+        elif e.key == 'e':
+            K[None] *= 1.05
+        elif e.key == 'q':
+            K[None] /= 1.05
+    # no delay control
+    # camera angle
     if gui.is_pressed(ti.GUI.LEFT):
         p[None] -= 1
-    if gui.is_pressed(ti.GUI.RIGHT):
+    elif gui.is_pressed(ti.GUI.RIGHT):
         p[None] += 1
-    if gui.is_pressed(ti.GUI.UP):
+    elif gui.is_pressed(ti.GUI.UP):
         t[None] += 1
-    if gui.is_pressed(ti.GUI.DOWN):
+    elif gui.is_pressed(ti.GUI.DOWN):
         t[None] -= 1
+    # scale/zoom
     if gui.is_pressed(']'):
         scale[None] *= 1.01
-    if gui.is_pressed('['):
+    elif gui.is_pressed('['):
         scale[None] /= 1.01
+    # camera postion
     if gui.is_pressed('w'):
         focus[None][1] += 0.01
-    if gui.is_pressed('a'):
+    elif gui.is_pressed('a'):
         focus[None][0] -= 0.01
-    if gui.is_pressed('s'):
+    elif gui.is_pressed('s'):
         focus[None][1] -= 0.01
-    if gui.is_pressed('d'):
+    elif gui.is_pressed('d'):
         focus[None][0] += 0.01
-    if gui.is_pressed('r'):
-        init()
-    if gui.is_pressed('c'):
-        initCamera()
-    if gui.is_pressed('e'):
-        if K[None] <= 1.:
-            K[None] *= 1.1
-        print(K[None])
-    if gui.is_pressed('q'):
-        K[None] /= 1.1
-        print(K[None])
-
-
+    # mouse interaction
     if gui.is_pressed(ti.GUI.RMB):
         mouse_pos = gui.get_cursor_pos()
         attract = 1
@@ -303,12 +290,13 @@ while gui.running and not gui.get_event(gui.ESCAPE):
         attract = -1
     else:
         attract = 0
-
-    
+    # render
+    project()
+    pos = view.to_numpy()
     gui.circles(pos[:N], radius=5*scale[None], color=0x66ccff)
     gui.circle(pos[N], radius=1*scale[None], color=0xff0000)
-
-    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=1*scale[None])
+    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=.1*scale[None])
+    gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
     gui.show()
-
+    # sim
     step()
