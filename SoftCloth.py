@@ -5,21 +5,10 @@ import taichi as ti # 0.7.29
 import numpy as np
 from numpy.linalg import norm
 from scipy.spatial import Delaunay
-from include.matrix import *
-from include.data import vec3, mat2
-from include.scene import createRandomCloth, createRectCloth
-import time
+
+from include import *
+from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
-
-@ti.pyfunc
-def tex(p3d):
-    cp, sp = ti.cos(0), ti.sin(0)
-    ct, st = ti.cos(0), ti.sin(0)
-
-    x,y,z = p3d - ti.Vector([.5,.5,.5])
-    x, z = x * cp + z * sp, z * cp - x * sp
-    u, v = x, y * ct + z * st
-    return ti.Vector([u,v]) * 1. + ti.Vector([0.5, 0.5])
 
 # build scene objects
 leftbtm = (.25, .25, .5)
@@ -28,8 +17,8 @@ np.random.seed(0)
 points.extend(createRectCloth(25,25,0.02, 0.02, leftbtm))
 #points.extend(createRandomCloth(25*25, leftbtm))
 
-
-points2d = np.array([tex(x) for x in points])
+flatten  = Camera(focus=(.5,.5,.5)).project
+points2d = np.array([flatten(x) for x in points])
 N = len(points)
 triangulation = Delaunay(points2d)
 edges=[[], []]
@@ -50,10 +39,7 @@ view = ti.Vector.field(2, ti.f32, shape=N+1)  # plus one for focus
 edges[0].extend([N-4,N-3,N-2,N-1, N-4])
 edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
-p = ti.field(ti.f32, shape=())
-t = ti.field(ti.f32, shape=())
-focus = ti.Vector.field(3, ti.f32, shape=())
-scale = ti.field(ti.f32, shape=())
+camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
 NC            = len(triangulation.simplices)           # number of constraint
 XNC           = NC + 2                                 # extend with 2 more triangles
@@ -71,22 +57,11 @@ GRAVITY = ti.Vector([0., -9.8, 0.])
 DeltaT  = 1 / 240
 iter    = ti.field(ti.i32, shape=())   # solver iterations
 iter[None] = 15
-# sim
-paused  = False
-picked  = -1
-mouse_pos = (0, 0)
-RMB     = False
 
 @ti.kernel
 def initP():
     for i in range(N):
         P[i] = X[i]
-
-def initCamera():
-    p[None] = 5.
-    t[None] = 1.
-    focus[None] = [0.5, 0.5, 0.5]
-    scale[None] = 0.8
 
 def init():
     V.fill(0)
@@ -132,8 +107,8 @@ def init():
 def initConstraint():
     for i in range(XNC):
         x,y,z = TRI[i]
-        col0 = tex(X[y]) - tex(X[x])
-        col1 = tex(X[z]) - tex(X[x])
+        col0 = flatten(X[y]) - flatten(X[x])
+        col1 = flatten(X[z]) - flatten(X[x])
 
         InvRestMatrix[i]= mat2(col0, col1, byCol=True)
 
@@ -202,10 +177,8 @@ def solve():
 #
 # PBD
 #
-
-def pick(mouse_pos):
-    pos = view.to_numpy() - mouse_pos
-    pos *= -1
+def pick(pos, mouse_pos):
+    pos = (pos - mouse_pos) * -1              # mouse-pos = -(pos-mouse)
     dists = np.array([norm(v) for v in pos])
     closest = int(np.argmin(dists))
     return closest if dists[closest] < 0.1 else -1
@@ -234,7 +207,7 @@ def box_confinement():
         if P[i][1] < 0.:
             P[i][1] = 1e-4
 
-def step():
+def step(paused, mouse_pos, picked):
     if not paused:
         apply_force(mouse_pos[0], mouse_pos[1], picked)
         box_confinement()
@@ -243,110 +216,46 @@ def step():
         update()
 
 @ti.kernel
-def project():
-    phi   = p[None] * np.pi / 180.
-    theta = t[None] * np.pi / 180.
-    cp, sp = ti.cos(phi), ti.sin(phi)
-    ct, st = ti.cos(theta), ti.sin(theta)
-
-    for i in X:
-        x,y,z = X[i] - focus[None]
-        x, z = x * cp + z * sp, z * cp - x * sp
-        u, v = x, y * ct + z * st
-        view[i] = ti.Vector([u,v]) * scale[None] + ti.Vector([0.5, 0.5])
-    # focus
-    x,y,z = [0., 0., 0.]
-    x, z = x * cp + z * sp, z * cp - x * sp
-    u, v = x, y * ct + z * st
-    view[N] = ti.Vector([u,v]) * scale[None] + ti.Vector([0.5, 0.5])
+def project(p3: ti.ext_arr(), p2: ti.ext_arr()):
+    for i in range(p3.shape[0]):
+        x,y,z = p3[i,0], p3[i,1], p3[i,2]
+        u,v   = camera.project(vec3(x,y,z))
+        p2[i,0] = u
+        p2[i,1] = v
     
 ###
 ###
 ###
 gui = ti.GUI('Triangle Constarint', background_color=0x112F41)
-initCamera()
+eventHandler = EventHandler(gui)
 init()
 while gui.running:
-    for e in gui.get_events(ti.GUI.PRESS, ti.GUI.MOTION):
-        if e.key in [ti.GUI.ESCAPE, ti.GUI.EXIT]:
-            exit()
-        elif e.key == gui.SPACE:
-            paused = not paused
-        elif e.key == 'r':
-            init()
-        elif e.key == 'c':
-            initCamera()
-        elif e.key == 't':
-            paused = False
-            step()
-            paused = True
-        # stiffness
-        elif e.key == 'e':
-            K[None] *= 1.05
-        elif e.key == 'q':
-            K[None] /= 1.05
-        # scale/zoom
-        if e.key == ti.GUI.WHEEL:
-            scale[None] *= 1.01 if e.delta.y>0 else 1/1.01
-        # camera angle
-        if e.key == ti.GUI.RMB:
-            RMB = not RMB
-            mouse_pos = e.pos
-        if e.type==ti.GUI.MOTION and RMB:
-            xdelta, ydelta = (ti.Vector(e.pos)-ti.Vector(mouse_pos))
-            p[None] -= xdelta * 100
-            t[None] -= ydelta * 100
-            mouse_pos = e.pos
-        # pin particle
-        if e.key == 'p':
-            idx = picked if picked >=0 else pick(e.pos)
-            if idx >= 0:
-                M[idx] = 0. if M[idx] != 0. else 1.
-        # enable extended triangles
-        if e.key == 'z':
-            NUM_C[None] = NC if NUM_C[None] != NC else XNC
-        
-    # no delay control
-    # camera angle
-    if gui.is_pressed(ti.GUI.LEFT):
-        p[None] -= 1
-    elif gui.is_pressed(ti.GUI.RIGHT):
-        p[None] += 1
-    elif gui.is_pressed(ti.GUI.UP):
-        t[None] += 1
-    elif gui.is_pressed(ti.GUI.DOWN):
-        t[None] -= 1
-    if gui.is_pressed('w'):
-        focus[None][1] += 0.01
-    elif gui.is_pressed('a'):
-        focus[None][0] -= 0.01
-    elif gui.is_pressed('s'):
-        focus[None][1] -= 0.01
-    elif gui.is_pressed('d'):
-        focus[None][0] += 0.01
-    # mouse interaction
-    if gui.is_pressed(ti.GUI.LMB):
-        mouse_pos = gui.get_cursor_pos()
-        if picked == -1:
-            picked = pick(mouse_pos)
-    else:
-        picked = -1
-    # iteration
-    if gui.is_pressed(']'):
-        iter[None] += 1
-    elif gui.is_pressed('['):
-        iter[None] -= 1
+    pos3 = X.to_numpy()
+    pos2 = np.zeros((len(pos3), 2))
+    project(pos3, pos2)
 
+    eventHandler.regularReact(camera=camera, stiffness_field=K, iteration_field=iter, mass_field=M,
+                            pos2d=pos2,
+                            init_method=init, step_method=step, pick_method=pick
+                            )
+    eventHandler.fastReact(camera=camera, 
+                        pos2d=pos2,
+                        pick_method=pick)
+    # enable extended triangles
+    if gui.is_pressed('z'):
+        NUM_C[None] = NC if NUM_C[None] != NC else XNC
+        time.sleep(.5)
+        
 
     # render
-    project()
-    pos = view.to_numpy()
-    gui.circles(pos[:N], radius=1*scale[None], color=0x66ccff)
-    gui.circle(pos[N], radius=1*scale[None], color=0xff0000)
-    gui.lines(pos[edges[0]], pos[edges[1]], color=0xffeedd, radius=1*scale[None])
+    # render
+    scale = camera.getScale()
+    gui.circles(pos2, radius=2*scale, color=0x66ccff)
+    gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
+    gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
     gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={iter[None]}',pos=(0,0.9), color=0xffffff)
     gui.text(content=f"Extra Triangle Constraint:{'enabled' if NUM_C[None] == XNC else 'disabled'}",pos=(0,0.85), color=0xffffff)
     gui.show()
     # sim
-    step()
+    step(eventHandler.paused, eventHandler.mouse_pos, eventHandler.picked)
