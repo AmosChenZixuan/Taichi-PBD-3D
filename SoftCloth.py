@@ -5,8 +5,8 @@ import taichi as ti # 0.7.29
 import numpy as np
 from numpy.linalg import norm
 from scipy.spatial import Delaunay
-from matrix import *
-from cloth import createRandomCloth, createRectCloth
+from include.matrix import *
+from include.scene import createRandomCloth, createRectCloth
 import time
 ti.init(arch=ti.gpu)
 

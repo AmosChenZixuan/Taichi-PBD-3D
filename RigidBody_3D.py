@@ -4,6 +4,7 @@ from numpy.linalg import inv
 from scipy.linalg import sqrtm, norm
 from scipy.spatial.transform import Rotation
 import time
+from include.utils import timeThis
 
 ti.init(arch=ti.gpu)
 
@@ -120,6 +121,7 @@ def calcApq():
         # A[2,2] += Q0[i][2] * Q[i][2]
     Apq[None] = A
 
+@timeThis
 def calcR_polar():
     # R = AS^-1     S = AA^T ** .5
     try:
@@ -152,6 +154,7 @@ def qmul(q1, q2):
     result[3] = q1[w]*q2[w] - q1[x]*q2[x] - q1[y]*q2[y] - q1[z]*q2[z]  # l
     return result
 
+@timeThis
 def calcR_extract():
     A = Apq[None].value.to_numpy()
     R_prev = R[None].value.to_numpy()
