@@ -1,14 +1,13 @@
 '''
     https://matthias-research.github.io/pages/publications/strainBasedDynamics.pdf
 '''
-from UI.interactions import EventHandler
 import taichi as ti # 0.7.29
 import numpy as np
 from numpy.linalg import norm
 from scipy.spatial import Delaunay
 
 from include import *
-from UI import Camera
+from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
 
 # build scene objects
