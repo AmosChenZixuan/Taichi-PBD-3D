@@ -17,6 +17,9 @@ class EventHandler:
         step   = kargs['step_method']
         K      = kargs['stiffness_field']
         niter  = kargs['iteration_field']
+        M      = kargs['mass_field']
+        pick   = kargs['pick_method']
+        pos2   = kargs['pos2d']
         if e.key == gui.SPACE:
             self.paused = not self.paused
         elif e.key == 'r':
@@ -27,8 +30,13 @@ class EventHandler:
             self.paused = False
             step(self.paused, self.mouse_pos, self.picked)
             self.paused = True
+        # pin particle
+        if e.key == 'p':
+            idx = self.picked if self.picked >=0 else pick(pos2, e.pos)
+            if idx >= 0:
+                M[idx] = 0. if M[idx] != 0. else 1.
         # stiffness
-        elif e.key == 'e':
+        if e.key == 'e':
             K[None] *= 1.05
         elif e.key == 'q':
             K[None] /= 1.05

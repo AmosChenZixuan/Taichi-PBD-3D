@@ -228,9 +228,13 @@ while gui.running:
     pos2 = np.zeros((len(pos3), 2))
     project(pos3, pos2)
 
-    eventHandler.regularReact(init_method = init, camera = camera, step_method = step, stiffness_field = K, iteration_field = iter)
-    eventHandler.fastReact(camera = camera, pick_method = pick, pos2d = pos2)
-    
+    eventHandler.regularReact(camera=camera, stiffness_field=K, iteration_field=iter, mass_field=M,
+                            pos2d=pos2,
+                            init_method=init, step_method=step, pick_method=pick
+                            )
+    eventHandler.fastReact(camera=camera, 
+                        pos2d=pos2,
+                        pick_method=pick)
     
     # render
     scale = camera.getScale()
