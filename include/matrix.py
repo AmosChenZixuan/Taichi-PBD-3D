@@ -1,28 +1,6 @@
 import taichi as ti
 
-def vec2(x=0., y=0.):
-    return ti.Vector([x,y])
-
-def vec3(x=0., y=0., z=0.):
-    return ti.Vector([x,y,z])
-
-def arr2(x=0., y=0.):
-    return [x,y]
-
-def arr3(x=0., y=0., z=0.):
-    return [x,y,z]
-
-def mat2(v1=arr2(),v2=arr2(), byCol=False):
-    ret = ti.Matrix([list(v1), list(v2)])
-    if byCol:
-        ret = ret.transpose()
-    return ret
-
-def mat3(v1=arr3(),v2=arr3(),v3=arr3(), byCol=False):
-    ret = ti.Matrix([list(v1), list(v2), list(v3)])
-    if byCol:
-        ret = ret.transpose()
-    return ret
+from include.data import vec2, vec3
 
 @ti.func
 def getCol(mat, idx):

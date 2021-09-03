@@ -4,6 +4,7 @@
 import taichi as ti # 0.7.29
 import numpy as np
 from include.matrix import *
+from include.data import vec3, mat2
 
 import time
 

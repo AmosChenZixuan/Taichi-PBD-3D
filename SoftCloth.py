@@ -6,6 +6,7 @@ import numpy as np
 from numpy.linalg import norm
 from scipy.spatial import Delaunay
 from include.matrix import *
+from include.data import vec3, mat2
 from include.scene import createRandomCloth, createRectCloth
 import time
 ti.init(arch=ti.gpu)
