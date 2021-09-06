@@ -13,10 +13,10 @@ class TetrahedronSolver:
         self.invQ = field(nTets, (3,3), ti.f32) # rest postion matrix inversed
         self.dp   = field(nParticles, 3, ti.f32)# postion delta  
         self.w    = field(nParticles, 1, ti.i32)# weights; number of springs on each vertex 
-
-        self.K[None] = .8
+        
 
     def reset(self):
+        self.K[None] = .8
         self.w.fill(0)
 
     def update(self, i, x, y, z, w):

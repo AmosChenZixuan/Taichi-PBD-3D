@@ -41,9 +41,9 @@ class ShapeMatchingSolver:
         self.R    = field((), (3,3), ti.f32)        # rotation matrix
         self.quat = np.array([0., 0., 0., 1.])      # rotation as quaternion 
         self.ALPHA = field((), 1, ti.f32)           # stiffness
-        self.ALPHA[None] = .01
 
     def reset(self):
+        self.ALPHA[None] = .1
         self.quat = np.array([0., 0., 0., 1.])
 
     def update(self, i, idx):
@@ -77,7 +77,7 @@ class ShapeMatchingSolver:
         m   = 0.
         for x in range(self.size):
             i = self.ptr[x]
-            mass = 1. #if mem.invM[i]==0. else 1./mem.invM[i]
+            mass = 1. if mem.invM[i]==0. else 1./mem.invM[i]
             cm += mem.newPos[i] * mass
             m  += mass
         self.CM[None] = cm / m

@@ -1,5 +1,7 @@
 
 import time
+import numpy as np
+from numpy.linalg import norm
 
 def timeThis(func):
     def wapper(*args, **kargs):
@@ -8,6 +10,15 @@ def timeThis(func):
         print(f'{func.__name__!r} executed in {(time.time()-s):.4f}s')
         return result
     return wapper
+
+def pick(pos, mouse_pos):
+    '''
+     Among all points in pos, pick the closest to mouse_pos
+    '''
+    pos = (pos - mouse_pos) * -1              # mouse-pos = -(pos-mouse)
+    dists = np.array([norm(v) for v in pos])
+    closest = int(np.argmin(dists))
+    return closest if dists[closest] < 0.1 else -1
 
 
 # @ti.pyfunc
