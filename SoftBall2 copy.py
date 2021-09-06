@@ -8,12 +8,13 @@ import pygalmesh
 from scipy.spatial.transform import Rotation
 
 from include import *
+from solvers import *
 from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
 
 # build scene objects
 s = pygalmesh.Stretch(pygalmesh.Ball([0, 0, 0], 1.0), [1.0, 2.0, 0.0])
-mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.8)
+mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.8, verbose=False)
 points = np.array(mesh.points)/10 + 0.5
 N = len(points)
 triangulation = mesh.cells[1].data
@@ -48,26 +49,18 @@ iter    = ti.field(ti.i32, shape=())   # solver iterations
 iter[None] = 3
 
 # shape
-CM = ti.Vector.field(3, ti.f32, shape=())
-Q  = ti.Vector.field(3, ti.f32, shape=N)
-Q0 = ti.Vector.field(3, ti.f32, shape=N)
-Apq = ti.Matrix.field(3, 3, dtype=ti.f32, shape=())
-R   = ti.Matrix.field(3, 3, dtype=ti.f32, shape=())
-ALPHA = ti.field(ti.f32, shape=())
-ALPHA[None] = .01
+shapeSolver = ShapeMatchingSolver(memory, N-4)
 
 
 def init():
     counts.fill(0)
-    Apq.fill(0)
-    R.fill(0)
+
     # mesh
+    offset = 0
     for i in range(N-4):
         memory.update(i, points[i], 1.)
-    #M[1] = 0.
-    updateCM()
-    updateQ()
-    initQ0()
+        shapeSolver.update(i, offset+i)
+    shapeSolver.reset()
 
     # constraint
     for i in range(NC):
@@ -84,106 +77,6 @@ def init():
     memory.update(N-3, [0., 0., 1.], 0.)
     memory.update(N-2, [1., 0., 1.], 0.)
     memory.update(N-1, [1., 0., 0.], 0.)
-
-#
-# SHAPE MATCHING
-#
-@ti.kernel
-def initQ0():
-    for i in range(N-4):
-        Q0[i] = Q[i]
-
-@ti.kernel
-def updateCM():
-    cm = ti.Vector([0., 0., 0.])
-    m = 0.
-    for i in range(N-4):
-        cm += memory.newPos[i] * 1.
-        m  += 1.
-    cm /= m
-    CM[None] = cm
-
-@ti.kernel
-def updateQ():
-    for i in range(N-4):
-        Q[i] = memory.newPos[i] - CM[None]
-
-@ti.kernel
-def calcApq():
-    A = ti.Vector([
-        [0., 0., 0.],
-        [0., 0., 0.],
-        [0., 0., 0.]
-    ])
-    for i in range(N-4):
-        A += Q[i] @ Q0[i].transpose()
-    Apq[None] = A
-
-def angle_axis(direction, angle):
-    result = np.array([0., 0., 0., 1.])
-    #angle = np.radians(angle)
-    sin = np.sin(angle/2)
-    cos = np.cos(angle/2)
-
-    result[:-1] = direction * sin
-    result[3]   = cos
-    return result
-
-def quaternion(float4):
-    return Rotation.from_quat(float4)
-
-def qmul(q1, q2):
-    # quaternion multiplication
-    x,y,z,w = 0,1,2,3
-    result = np.zeros(4)
-    result[0] = q1[w]*q2[x] + q1[x]*q2[w] + q1[y]*q2[z] - q1[z]*q2[y]  # i
-    result[1] = q1[w]*q2[y] - q1[x]*q2[z] + q1[y]*q2[w] + q1[z]*q2[x]  # j
-    result[2] = q1[w]*q2[z] + q1[x]*q2[y] - q1[y]*q2[x] + q1[z]*q2[w]  # k
-    result[3] = q1[w]*q2[w] - q1[x]*q2[x] - q1[y]*q2[y] - q1[z]*q2[z]  # l
-    return result
-
-
-def calcR_extract():
-    A = Apq[None].value.to_numpy()
-    R_prev = R[None].value.to_numpy()
-    if norm(R_prev) == 0.:
-        q = np.array([0., 0., 0., 1.])
-    else:
-        q = Rotation.from_matrix(R_prev).as_quat()
-
-    for _ in range(3):
-        rot = quaternion(q)
-        r = rot.as_matrix()
-        omega_numerator = np.cross(r[:,0], A[:,0]) + \
-                          np.cross(r[:,1], A[:,1]) + \
-                          np.cross(r[:,2], A[:,2])
-        omega_denom = 1. / (abs(
-            np.dot(r[:,0], A[:,0]) + \
-            np.dot(r[:,1], A[:,1]) + \
-            np.dot(r[:,2], A[:,2])
-        ) + 1.e-9)
-        omega = omega_numerator * omega_denom
-        w = norm(omega)
-        if w < 1.e-9:
-            break
-        q = qmul(angle_axis(omega/w, w), q)  # very important
-        q = q / norm(q)
-    R[None] = ti.Vector(quaternion(q).as_matrix())
-
-
-@ti.kernel
-def updateDelta():
-    for i in range(N-4):
-        p = R[None] @ Q0[i] + CM[None]
-        memory.newPos[i] += (p - memory.newPos[i]) * ALPHA[None] 
-
-#@timeThis
-def solveShape():
-    updateCM()
-    updateQ()
-    calcApq()
-    calcR_extract()
-    updateDelta()
 
 #
 # Volume Conservation
@@ -309,7 +202,7 @@ def step(paused, mouse_pos, picked):
         box_confinement()
         for _ in range(iter[None]):
             solve()
-        solveShape()
+        shapeSolver.solve()
         update()
 
 @ti.kernel
@@ -339,9 +232,9 @@ while gui.running:
                         pos2d=pos2,
                         pick_method=pick)
     if gui.is_pressed(","):
-        ALPHA[None] /= 1.1
+        shapeSolver.ALPHA[None] /= 1.1
     elif gui.is_pressed('.'):
-        ALPHA[None] *= 1.1
+        shapeSolver.ALPHA[None] *= 1.1
     if gui.is_pressed("="):
         GRAVITY[None][1] /= 1.1
     elif gui.is_pressed('-'):
@@ -354,7 +247,7 @@ while gui.running:
     gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
     gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={iter[None]}',pos=(0,0.9), color=0xffffff)
-    gui.text(content=f'Shape={ALPHA[None]}',pos=(0,0.85), color=0xffffff)
+    gui.text(content=f'Shape={shapeSolver.ALPHA[None]}',pos=(0,0.85), color=0xffffff)
     gui.text(content=f'Gravity={GRAVITY[None].value}',pos=(0,0.8), color=0xffffff)
     gui.show()
     # sim
