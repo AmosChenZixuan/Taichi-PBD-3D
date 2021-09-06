@@ -95,10 +95,11 @@ def apply_force(mouse_x: ti.f32, mouse_y: ti.f32, idx: ti.i32):
 @ti.kernel
 def update():
     for i in range(N):
-        if memory.invM[i] <= 0.: continue
-        memory.vel[i] = (memory.newPos[i] - memory.curPos[i]) / DeltaT * .99
-        memory.curPos[i] = memory.newPos[i]
-
+        if memory.invM[i] <= 0.:
+            memory.newPos[i] = memory.curPos[i]
+        else:
+            memory.vel[i] = (memory.newPos[i] - memory.curPos[i]) / DeltaT * .99
+            memory.curPos[i] = memory.newPos[i]
 @ti.kernel
 def box_confinement():
     for i in range(N):
