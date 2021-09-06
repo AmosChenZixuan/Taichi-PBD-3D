@@ -34,22 +34,25 @@ class ShapeMatchingSolver:
         self.size = nParticles
         self.ptr  = field(nParticles, 1, ti.i32)
 
-        self.CM   = field((), 3, ti.f32)
-        self.Q    = field(nParticles, 3, ti.f32)
-        self.Q0   = field(nParticles, 3, ti.f32)
-        self.Apq  = field((), (3,3), ti.f32)
-        self.R    = field((), (3,3), ti.f32)
-        self.quat = np.array([0., 0., 0., 1.])
-        self.ALPHA = field((), 1, ti.f32)
+        self.CM   = field((), 3, ti.f32)            # center of mass
+        self.Q    = field(nParticles, 3, ti.f32)    # position matrix
+        self.Q0   = field(nParticles, 3, ti.f32)    # rest postion mat
+        self.Apq  = field((), (3,3), ti.f32)        # deformation matrix
+        self.R    = field((), (3,3), ti.f32)        # rotation matrix
+        self.quat = np.array([0., 0., 0., 1.])      # rotation as quaternion 
+        self.ALPHA = field((), 1, ti.f32)           # stiffness
         self.ALPHA[None] = .01
 
     def reset(self):
-        self.updateCM()
-        self.updateQ()
-        self.initQ0()
+        self.quat = np.array([0., 0., 0., 1.])
 
     def update(self, i, idx):
         self.ptr[i] = idx
+
+    def init(self):
+        self.updateCM()
+        self.updateQ()
+        self.initQ0()
 
     #@timeThis
     def solve(self):
@@ -58,6 +61,8 @@ class ShapeMatchingSolver:
         self.calcApq()
         self.calcR_extract()
         self.updateDelta() 
+
+    ################### Private Methods #####################
 
     @ti.kernel
     def initQ0(self):
@@ -72,7 +77,7 @@ class ShapeMatchingSolver:
         m   = 0.
         for x in range(self.size):
             i = self.ptr[x]
-            mass = 1. if mem.invM[i]==0. else 1./mem.invM[i]
+            mass = 1. #if mem.invM[i]==0. else 1./mem.invM[i]
             cm += mem.newPos[i] * mass
             m  += mass
         self.CM[None] = cm / m

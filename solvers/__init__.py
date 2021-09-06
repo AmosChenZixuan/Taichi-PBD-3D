@@ -1,0 +1,2 @@
+from solvers.shape import ShapeMatchingSolver
+from solvers.tetrahedron import TetrahedronSolver

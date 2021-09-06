@@ -35,12 +35,9 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
 NC            = len(triangulation)           # number of constraint
-K             = ti.field(ti.f32, shape=())   # stiffness
-K[None] = .8
-TET           = ti.Vector.field(4, ti.i32, shape=NC) # Tetrahedron
-InvRestMatrix = ti.Matrix.field(3, 3, dtype=ti.f32, shape=NC)
-DELTA         = ti.Vector.field(3, ti.f32, shape=N) # postion correction cache
-counts        = ti.field(ti.i32, shape=N)
+tetSolver = TetrahedronSolver(memory, N-4, NC)
+# shape
+shapeSolver = ShapeMatchingSolver(memory, N-4)
 # pbd
 GRAVITY = ti.Vector.field(3, ti.f32, shape=())
 GRAVITY[None] = ti.Vector([0., -9.8, 0.])
@@ -48,29 +45,25 @@ DeltaT  = 1 / 240
 iter    = ti.field(ti.i32, shape=())   # solver iterations
 iter[None] = 3
 
-# shape
-shapeSolver = ShapeMatchingSolver(memory, N-4)
 
 
 def init():
-    counts.fill(0)
+    # reset solvers
+    tetSolver.reset()
+    shapeSolver.reset()
 
     # mesh
     offset = 0
     for i in range(N-4):
         memory.update(i, points[i], 1.)
         shapeSolver.update(i, offset+i)
-    shapeSolver.reset()
+    shapeSolver.init()
 
     # constraint
     for i in range(NC):
-        TET[i] = triangulation[i]
-        x,y,z,w = TET[i]
-        counts[x] += 4
-        counts[y] += 4
-        counts[z] += 4
-        counts[w] += 4
-    initConstraint()
+        x,y,z,w = triangulation[i]
+        tetSolver.update(i, x,y,z,w)
+    tetSolver.init()
     
     #floor
     memory.update(N-4, [0., 0., 0.], 0.)
@@ -78,90 +71,6 @@ def init():
     memory.update(N-2, [1., 0., 1.], 0.)
     memory.update(N-1, [1., 0., 0.], 0.)
 
-#
-# Volume Conservation
-#
-@ti.kernel
-def initConstraint():
-    for i in range(NC):
-        x,y,z,w = TET[i]
-        col0 = memory.curPos[y] - memory.curPos[x]
-        col1 = memory.curPos[z] - memory.curPos[x]
-        col2 = memory.curPos[w] - memory.curPos[x]
-
-        InvRestMatrix[i]= mat3(col0, col1, col2, byCol=True)
-
-        InvRestMatrix[i] = InvRestMatrix[i].inverse()
-        #print(InvRestMatrix[i])
-
-def clearDelta():
-    DELTA.fill(0)
-
-@ti.kernel
-def calcDelta():
-    eps = 1e-9
-    for ci in range(NC):
-        x,y,z,w     = TET[ci]
-        px,py,pz,pw = memory.newPos[x], memory.newPos[y], memory.newPos[z], memory.newPos[w]  
-        invQ        = InvRestMatrix[ci]        # constant material positon matrix, inversed
-
-        p1 = py-px + DELTA[y] - DELTA[x]
-        p2 = pz-px + DELTA[z] - DELTA[x]
-        p3 = pw-px + DELTA[w] - DELTA[x]
-        p  = mat3(p1, p2, p3, byCol=True)      # world relative position matrix
-
-        for i in ti.static(range(3)):
-            for j in ti.static(range(i+1)):
-                # S = F^t*F;    G(Green - St Venant strain tensor) = S - I
-                fi = p @ getCol(invQ, i)
-                fj = p @ getCol(invQ, j)
-                Sij = fi.dot(fj)
-                # Derivatives of Sij
-                # d_p0_Sij = -SUM_k{d_pk_Sij}
-                d0, d1, d2, d3 = vec3(), vec3(), vec3(), vec3()
-                d1 = fj * invQ[0,i] + fi * invQ[0,j]
-                d2 = fj * invQ[1,i] + fi * invQ[1,j]
-                d3 = fj * invQ[2,i] + fi * invQ[2,j]
-                d0 = -(d1+d2+d3)
-                # dp_k = -Lambda * invM_k * d_pk_Sij
-                # Lambda = 
-                #       (Sii - si^2) / SUM_k{invM_k * |d_pk_Sii|^2}    if i==j  ;    si: rest strech. typically 1
-                #                Sij / SUM_k{invM_k * |d_pk_Sii|^2}    if i<j
-                gradSum = d0.norm_sqr()*memory.invM[x] + d1.norm_sqr()*memory.invM[y] + \
-                            d2.norm_sqr()*memory.invM[z] + d3.norm_sqr()*memory.invM[w]
-                vlambda = 0.
-                if abs(gradSum) > eps: 
-                    if i == j:
-                        vlambda = (Sij-1.) / gradSum * K[None]
-
-                    else:
-                        vlambda = Sij / gradSum * K[None]
-                    DELTA[x]  -= vlambda * d0 * memory.invM[x]
-                    DELTA[y]  -= vlambda * d1 * memory.invM[y]
-                    DELTA[z]  -= vlambda * d2 * memory.invM[z]
-                    DELTA[w]  -= vlambda * d3 * memory.invM[w]
-                    #print(vlambda * d0, vlambda * d1, vlambda * d2, vlambda * d3)
-                else:
-                    print('WTF')
-
-@ti.kernel
-def applyDelta():
-    for ci in range(NC):
-        x,y,z,w  = TET[ci]
-        memory.newPos[x] += (DELTA[x] / counts[x]) / 4
-        memory.newPos[y] += (DELTA[y] / counts[y]) / 4
-        memory.newPos[z] += (DELTA[z] / counts[z]) / 4
-        memory.newPos[w] += (DELTA[w] / counts[w]) / 4
-        #print(DELTA[ci, 0], DELTA[ci, 1], DELTA[ci, 2],DELTA[ci, 3])
-
-#@timeThis
-def solve():
-    '''
-        Tetrahedral Constraints
-    '''
-    clearDelta()
-    calcDelta()
-    applyDelta()
     
 #
 # PBD
@@ -201,7 +110,7 @@ def step(paused, mouse_pos, picked):
         apply_force(mouse_pos[0], mouse_pos[1], picked)
         box_confinement()
         for _ in range(iter[None]):
-            solve()
+            tetSolver.solve()
         shapeSolver.solve()
         update()
 
@@ -224,7 +133,7 @@ while gui.running:
     pos2 = np.zeros((len(pos3), 2))
     project(pos3, pos2)
 
-    eventHandler.regularReact(camera=camera, stiffness_field=K, iteration_field=iter, mass_field=memory.invM,
+    eventHandler.regularReact(camera=camera, stiffness_field=tetSolver.K, iteration_field=iter, mass_field=memory.invM,
                             pos2d=pos2,
                             init_method=init, step_method=step, pick_method=pick
                             )
@@ -245,7 +154,7 @@ while gui.running:
     #gui.circles(pos2, radius=2*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
     gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
-    gui.text(content=f'Stiffness={K[None]}',pos=(0,0.95), color=0xffffff)
+    gui.text(content=f'Stiffness={tetSolver.K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={iter[None]}',pos=(0,0.9), color=0xffffff)
     gui.text(content=f'Shape={shapeSolver.ALPHA[None]}',pos=(0,0.85), color=0xffffff)
     gui.text(content=f'Gravity={GRAVITY[None].value}',pos=(0,0.8), color=0xffffff)
