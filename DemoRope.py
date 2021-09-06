@@ -1,6 +1,3 @@
-'''
-    https://matthias-research.github.io/pages/publications/strainBasedDynamics.pdf
-'''
 import taichi as ti # 0.7.29
 import numpy as np
 import pygalmesh
@@ -10,21 +7,18 @@ from solvers import *
 from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
 
-# build scene objects
-s = pygalmesh.Stretch(pygalmesh.Ball([0, 0, 0], 1.0), [2.0, 1.0, .0])
-mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.8, verbose=False)
-points = np.array(mesh.points)/10 + 0.5
-N = len(points)
-triangulation = mesh.cells[1].data
-edges=[[], []]
-for tet in triangulation:
-    for i in range(4):
-        for j in range(i+1, 4):
-            edges[0].append(tet[i])
-            edges[1].append(tet[j])
 
-# Allocate memory
-N = N+4   # number of particles; plus one for floor
+points = []
+edges=[[], []]
+
+for i in range(30):
+    points.append([.5, .5-.01*i, .5])
+    if i < 29:
+        edges[0].append(len(points))
+        edges[1].append(len(points)-1)
+
+N = len(points) + 4
+
 memory = Memory(N)
 # add floor
 edges[0].extend([N-4,N-3,N-2,N-1, N-4])
@@ -32,10 +26,12 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
 camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
-NC            = len(triangulation)           # number of constraint
+NC          = 1    # number of constraint
 tetSolver   = TetrahedronSolver(memory, N-4, NC)
 # shape
 shapeSolver = ShapeMatchingSolver(memory, N-4)
+# strech
+stretchSolver = TotalStretchSolver(memory, N-4, len(edges[0])-5)
 # pbd
 pbd         = PostionBasedDynamics(memory, camera, N)
 
@@ -43,21 +39,16 @@ pbd         = PostionBasedDynamics(memory, camera, N)
 def init():
     pbd.reset()
     # reset solvers
-    tetSolver.reset()
-    shapeSolver.reset()
+    stretchSolver.reset()
 
     # mesh
-    offset = 0
     for i in range(N-4):
         memory.update(i, points[i], 1.)
-        shapeSolver.update(i, offset+i)
-    shapeSolver.init()
 
-    # constraint
-    for i in range(NC):
-        x,y,z,w = triangulation[i]
-        tetSolver.update(i, x,y,z,w)
-    tetSolver.init()
+    for i in range(len(edges[0])-5):
+        stretchSolver.update(i, edges[0][i], edges[1][i])
+    stretchSolver.init()
+
     
     #floor
     memory.update(N-4, [0., 0., 0.], 0.)
@@ -72,8 +63,7 @@ def step(paused, mouse_pos, picked):
             pbd.apply_force(mouse_pos[0], mouse_pos[1], picked)
             pbd.box_confinement()
             for _ in range(pbd.iters[None]):
-                tetSolver.solve()
-            shapeSolver.solve()
+                stretchSolver.solve()
             pbd.update()
 
     
@@ -106,7 +96,7 @@ while gui.running:
     
     # render
     scale = camera.getScale()
-    #gui.circles(pos2, radius=2*scale, color=0x66ccff)
+    gui.circles(pos2, radius=2*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
     gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
     gui.text(content=f'Stiffness={tetSolver.K[None]}',pos=(0,0.95), color=0xffffff)
