@@ -22,8 +22,8 @@ class TotalStretchSolver:
 
     def update(self, i, x, y):
         self.Springs[i] = x,y
-        self.w[x] += 2
-        self.w[y] += 2
+        self.w[x] += 8
+        self.w[y] += 8
 
     def init(self):
         self.initRestLen()
@@ -53,9 +53,9 @@ class TotalStretchSolver:
         for i in range(self.size):
             x,y = self.Springs[i]
             w1, w2 = mem.invM[x], mem.invM[y]
-            n  = mem.newPos[x] - mem.newPos[y]
+            n  = mem.newPos[x] - mem.newPos[y] + self.dp[x] - self.dp[y]
             d  = n.norm()
-            if not (w1 == w2 == 0.) and d > 0.:
+            if w1 + w2 > 0. and d > 0.:
                 dp = n.normalized() * (d-self.restLen[i]) / (w1 + w2)
                 self.dp[x] -= dp * w1 * self.K[None] 
                 self.dp[y] += dp * w2 * self.K[None] 
@@ -68,3 +68,4 @@ class TotalStretchSolver:
             mem.newPos[x] += self.dp[x] / self.w[x]
             mem.newPos[y] += self.dp[y] / self.w[y]
             #print(self.dp[x], self.dp[y], self.w[x], self.w[y])
+
