@@ -22,8 +22,8 @@ class TotalStretchSolver:
 
     def update(self, i, x, y):
         self.Springs[i] = x,y
-        self.w[x] += 8
-        self.w[y] += 8
+        self.w[x] += 2**3
+        self.w[y] += 2**3
 
     def init(self):
         self.initRestLen()
