@@ -2,6 +2,7 @@
 import time
 import numpy as np
 from numpy.linalg import norm
+from include.data import vec2
 
 def timeThis(func):
     def wapper(*args, **kargs):
@@ -19,6 +20,15 @@ def pick(pos, mouse_pos):
     dists = np.array([norm(v) for v in pos])
     closest = int(np.argmin(dists))
     return closest if dists[closest] < 0.1 else -1
+
+def flatten(v3):
+    cp, sp = np.cos(0), np.sin(0)
+    ct, st = np.cos(0), np.sin(0)
+
+    x,y,z = v3
+    x, z = x * cp + z * sp, z * cp - x * sp
+    u, v = x, y * ct + z * st
+    return vec2(u,v) * 1. + vec2(.5, .5)
 
 
 # @ti.pyfunc
