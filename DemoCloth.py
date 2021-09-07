@@ -35,10 +35,10 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
 camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # solvers
-stretchSolver = TotalStretchSolver(memory, len(cloth1.points), len(cloth1.edges[0]))
-triangleSolver = TriangleSolver(memory, len(cloth2.points), len(cloth2.cells))
+stretchSolver = TotalStretchSolver(memory, N, len(cloth2.edges[0]))
+triangleSolver = TriangleSolver(memory, N, len(cloth1.cells))
 # pbd
-pbd         = PostionBasedDynamics(memory, camera, N)
+pbd         = PostionBasedDynamics(memory, camera, N, restIter=15)
 
 
 def init():
@@ -53,14 +53,16 @@ def init():
     for i in range(len(cloth2.points)):
         memory.update(i+offset, cloth2.points[i], 1.)
 
-    for i in range(len(cloth1.edges[0])):
-        stretchSolver.update(i, cloth1.edges[0][i], cloth1.edges[1][i])
-    stretchSolver.init()
-
-    for i in range(len(cloth2.cells)):
-        x,y,z = cloth2.cells[i] + offset
+    for i in range(len(cloth1.cells)):
+        x,y,z = cloth1.cells[i]
         triangleSolver.update(i, x,y,z)
     triangleSolver.init()
+       
+
+    for i in range(len(cloth2.edges[0])):
+         stretchSolver.update(i, cloth2.edges[0][i], cloth2.edges[1][i])
+    stretchSolver.init()
+        
     
     #floor
     memory.update(N-4, [0., 0., 0.], 0.)

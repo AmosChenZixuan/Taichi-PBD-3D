@@ -4,9 +4,10 @@ from include import *
 
 @ti.data_oriented
 class TriangleSolver:
-    def __init__(self, memory: Memory, nParticles, nTris):
+    def __init__(self, memory: Memory, nParticles, nTris, restStiff=1.):
         self.mem  = memory
         self.size = nTris
+        self.reStf= restStiff
         
         self.K    = field((), 1, ti.f32)        # stiffness
         self.Tris = field(nTris, 3, ti.i32)     # vertices of triangles
@@ -16,14 +17,14 @@ class TriangleSolver:
         
 
     def reset(self):
-        self.K[None] = .8
+        self.K[None] = self.reStf
         self.w.fill(0)
 
     def update(self, i, x, y, z):
         self.Tris[i] = x,y,z
-        self.w[x] += 3**4
-        self.w[y] += 3**4
-        self.w[z] += 3**4
+        self.w[x] += 1
+        self.w[y] += 1
+        self.w[z] += 1
 
 
     def init(self):
@@ -47,6 +48,9 @@ class TriangleSolver:
 
             self.invQ[i]= mat2(col0, col1, byCol=True)
             self.invQ[i] = self.invQ[i].inverse()
+
+        for i in self.w:
+            self.w[i] = self.w[i]**2
 
     def clearDelta(self):
         self.dp.fill(0)
@@ -100,7 +104,8 @@ class TriangleSolver:
         mem = self.mem
         for i in range(self.size):
             x,y,z  = self.Tris[i]
-            mem.newPos[x] += min(self.dp[x] / self.w[x] , 0.01)
-            mem.newPos[y] += min(self.dp[y] / self.w[y] , 0.01)
-            mem.newPos[z] += min(self.dp[z] / self.w[z] , 0.01)
+            mem.newPos[x] += self.dp[x] / self.w[x]
+            mem.newPos[y] += self.dp[y] / self.w[y]
+            mem.newPos[z] += self.dp[z] / self.w[z]
+            #print('t', self.dp[x] / self.w[x], self.dp[y] / self.w[y], self.dp[z] / self.w[z])
     

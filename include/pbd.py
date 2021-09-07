@@ -7,7 +7,7 @@ from include.data import *
 
 @ti.data_oriented
 class PostionBasedDynamics:
-    def __init__(self, memory:Memory, camera:Camera, nParticle):
+    def __init__(self, memory:Memory, camera:Camera, nParticle, restIter=3):
         self.mem  = memory
         self.cam  = camera
         self.size = nParticle
@@ -16,11 +16,11 @@ class PostionBasedDynamics:
         self.iters   = field((), 1, ti.i32)
         self.substep = 2 
         self.dt      = 1 / 60 / self.substep 
+        self.reItr   = restIter
 
     def reset(self):
         self.gravity[None] = vec3(y=-9.8)
-        self.iters[None]   = 3
-        self.substep = 2
+        self.iters[None]   = self.reItr
 
     def init(self):
         raise NotImplementedError()

@@ -5,9 +5,10 @@ from include import *
 
 @ti.data_oriented
 class TotalStretchSolver:
-    def __init__(self, memory:Memory, nParticles, nSprings):
+    def __init__(self, memory:Memory, nParticles, nSprings, restStiff=1.):
         self.mem  = memory
         self.size = nSprings
+        self.reStf= restStiff
 
         self.K       = field((), 1, ti.f32)         # stiffness
         self.Springs = field(nSprings, 2, ti.i32)   # vertices of springs
@@ -17,13 +18,13 @@ class TotalStretchSolver:
 
 
     def reset(self):
-        self.K[None] = 1.
+        self.K[None] = self.reStf
         self.w.fill(0) 
 
     def update(self, i, x, y):
         self.Springs[i] = x,y
-        self.w[x] += 2**3
-        self.w[y] += 2**3
+        self.w[x] += 1
+        self.w[y] += 1
 
     def init(self):
         self.initRestLen()
@@ -43,6 +44,9 @@ class TotalStretchSolver:
             x,y = self.Springs[i]
             r = mem.curPos[x] - mem.curPos[y]
             self.restLen[i] = r.norm()
+        
+        for i in self.w:
+            self.w[i] = self.w[i]**2
 
     def clearDelta(self):
         self.dp.fill(0)
@@ -67,5 +71,5 @@ class TotalStretchSolver:
             x,y = self.Springs[i]
             mem.newPos[x] += self.dp[x] / self.w[x]
             mem.newPos[y] += self.dp[y] / self.w[y]
-            #print(self.dp[x], self.dp[y], self.w[x], self.w[y])
+            #print('s', self.dp[x], self.dp[y], self.w[x], self.w[y])
 

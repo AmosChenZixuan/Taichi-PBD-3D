@@ -2,7 +2,7 @@
 import time
 import numpy as np
 from numpy.linalg import norm
-from include.data import vec2
+from include.data import vec2, vec3
 
 def timeThis(func):
     def wapper(*args, **kargs):
@@ -25,10 +25,10 @@ def flatten(v3):
     cp, sp = np.cos(0), np.sin(0)
     ct, st = np.cos(0), np.sin(0)
 
-    x,y,z = v3
+    x,y,z = vec3(*v3)-.5
     x, z = x * cp + z * sp, z * cp - x * sp
     u, v = x, y * ct + z * st
-    return vec2(u,v) * 1. + vec2(.5, .5)
+    return vec2(u,v) * 1. +.5
 
 
 # @ti.pyfunc
