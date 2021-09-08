@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial import Delaunay
 
 from include import *
-from solvers import * 
+from solvers import *   
 from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
 
@@ -21,8 +21,8 @@ class RectClothMesh:
 
 # build scene objects
 edges=[[], []]
-cloth1 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .4)), 0)
-cloth2 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .6)), len(cloth1.points))
+cloth1 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .5)), 0)
+cloth2 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .45)), len(cloth1.points))
 edges[0].extend(cloth1.edges[0]); edges[1].extend(cloth1.edges[1])
 edges[0].extend(cloth2.edges[0]); edges[1].extend(cloth2.edges[1])
 
@@ -35,9 +35,25 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
 camera = Camera(focus=(.5, .5,.5), angle=(0., 0.), scale=.8)
 # solvers
-stretchSolver = TotalStretchSolver(memory, N, len(edges[0])-5)
-sewSolver     = TotalSewSolver(    memory, N, 100)
+stretchSolver = TotalStretchSolver(memory, N, len(edges[0])-5, restStiff=.5)
 shmSolver     = ShapeMatchingSolver(memory, N)
+
+sewPoints = set()
+for i in range(25):
+    x = 24*25+i
+    sewPoints.add(x);sewPoints.add(625+x)
+    x = i
+    sewPoints.add(x);sewPoints.add(625+x)
+    x = 25*i+24
+    sewPoints.add(x);sewPoints.add(625+x)
+    x = 25*i
+    sewPoints.add(x);sewPoints.add(625+x)
+sewSolver     = TotalSewSolver(    memory, N, len(sewPoints)//2)
+
+
+cells = [[25,26,50, 650]]
+volSolver     = VolumeSolver(memory, len(cells))
+
 # pbd
 pbd         = PostionBasedDynamics(memory, camera, N, restIter=15)
 
@@ -48,6 +64,7 @@ def init():
     stretchSolver.reset()
     sewSolver.reset()
     shmSolver.reset()
+    volSolver.reset()
     # mesh
     for i in range(len(cloth1.points)):
         memory.update(i, cloth1.points[i], 1.)
@@ -63,15 +80,13 @@ def init():
          stretchSolver.update(i, edges[0][i], edges[1][i])
     stretchSolver.init()
 
-    for i in range(25):
-        sewSolver.update(i, 24*25+i, 625+24*25+i)
-    for i in range(25):
-        sewSolver.update(25+i, i, 25*25+i)
-    for i in range(25):
-        sewSolver.update(50+i, 25*i+24, 25*25+25*i+24)
-    for i in range(25):
-        sewSolver.update(75+i, 25*i, 25*25+25*i)  
-    sewSolver.init()  
+    for i,x in enumerate([x for x in sewPoints if x < 625]):
+        sewSolver.update(i, x, x+625)
+    sewSolver.init() 
+
+    for i,(x,y,z,w) in enumerate(cells):
+        volSolver.update(i, x,y,z,w)
+    volSolver.init() 
     
     #floor
     memory.update(N-4, [0., 0., 0.], 0.)
@@ -87,6 +102,7 @@ def step(paused, mouse_pos, picked):
             pbd.box_confinement()
             shmSolver.solve()
             for _ in range(pbd.iters[None]):
+                volSolver.solve()
                 stretchSolver.solve()
                 sewSolver.solve()
                 
@@ -95,12 +111,13 @@ def step(paused, mouse_pos, picked):
 def render(gui, pos2):
     # render
     scale = camera.getScale()
-    gui.circles(pos2, radius=2*scale, color=0x66ccff)
+    gui.circles(pos2, radius=1*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
-    gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
-    gui.text(content=f'Stiffness={shmSolver.ALPHA[None]}',pos=(0,0.95), color=0xffffff)
+    gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.2*scale)
+    gui.text(content=f'Stiffness={volSolver.K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={pbd.iters[None]}',pos=(0,0.9), color=0xffffff)
-    gui.text(content=f'Gravity={pbd.gravity[None].value}',pos=(0,0.85), color=0xffffff)
+    gui.text(content=f'Shape={shmSolver.ALPHA[None]}',pos=(0,0.85), color=0xffffff)
+    gui.text(content=f'Gravity={pbd.gravity[None].value}',pos=(0,0.8), color=0xffffff)
 
 
     
@@ -116,13 +133,17 @@ while gui.running:
     pos2 = np.zeros((len(pos3), 2))
     pbd.project(pos3, pos2)
 
-    eventHandler.regularReact(camera=camera, stiffness_field=shmSolver.ALPHA, iteration_field=pbd.iters, mass_field=memory.invM,
+    eventHandler.regularReact(camera=camera, stiffness_field=volSolver.K, iteration_field=pbd.iters, mass_field=memory.invM,
                             pos2d=pos2,
                             init_method=init, step_method=step, pick_method=pick
                             )
     eventHandler.fastReact(camera=camera, 
                         pos2d=pos2,
                         pick_method=pick)
+    if gui.is_pressed(","):
+        shmSolver.ALPHA[None] /= 1.1
+    elif gui.is_pressed('.'):
+        shmSolver.ALPHA[None] *= 1.1
     if gui.is_pressed("="):
         pbd.gravity[None][1] /= 1.1
     elif gui.is_pressed('-'):

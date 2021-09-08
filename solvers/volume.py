@@ -62,7 +62,8 @@ class VolumeSolver:
             gradSum = d0.norm_sqr()*mem.invM[x] + d1.norm_sqr()*mem.invM[y] + \
                     d2.norm_sqr()*mem.invM[z] + d3.norm_sqr()*mem.invM[w]
             if abs(gradSum) > eps: 
-                k       = self.NegK if v < 0. else self.K[None]
+                #k       = self.NegK if v < 0. else self.K[None]
+                k = self.K[None]
                 vlambda = k * (v-self.V0[i]) / gradSum
 
                 mem.newPos[x] -= vlambda * mem.invM[x] * d0
