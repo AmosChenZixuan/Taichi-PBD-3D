@@ -22,17 +22,13 @@ class RectClothMesh:
 # build scene objects
 points = []
 edges  =[[], []]
-cloth1 = RectClothMesh(createBowCloth(25,25,0.02, 0.02, .2, (.25, .25, .5)), 0)
-cloth2 = RectClothMesh(createBowCloth(25,25,0.02, 0.02, .05,(.25, .25, .5), -1), len(cloth1.points))
+cloth1 = RectClothMesh(createBowCloth(25,25,0.02, 0.02, .1, (.25, .25, .5)), 0)
+cloth2 = RectClothMesh(createRectCloth(25,25,0.02, 0.02,(.25, .25, .5)), len(cloth1.points))
 points.extend(cloth1.points); points.extend(cloth2.points)
 edges[0].extend(cloth1.edges[0]); edges[1].extend(cloth1.edges[1])
 edges[0].extend(cloth2.edges[0]); edges[1].extend(cloth2.edges[1])
-# calc cm
-cm = np.zeros(3)
-for p in points:
-    cm += np.array(p)
-points.append(cm/len(points)+[.12,.12,.0])
-points.append(cm/len(points)-[.12,.12,.0])
+
+#points.extend(createBowCloth(10,10,0.02, 0.02, .2, (.4, .4, .5)))
 
 N = len(points) + 4
 
@@ -41,7 +37,7 @@ memory = Memory(N)
 edges[0].extend([N-4,N-3,N-2,N-1, N-4])
 edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
-camera = Camera(focus=(.5, .5,.5), angle=(0., 0.), scale=.8)
+camera = Camera(focus=(.5, .5,.5), angle=(0., 0.), scale=1.)
 # solvers
 stretchSolver = TotalStretchSolver(memory, N, len(edges[0])-5, restStiff=.5)
 shmSolver     = ShapeMatchingSolver(memory, N)
@@ -56,11 +52,15 @@ for i in range(25):
     sewPoints.add(x);sewPoints.add(625+x)
     x = 25*i
     sewPoints.add(x);sewPoints.add(625+x)
+    x = 8*25+i
+    sewPoints.add(x);sewPoints.add(625+x)
+    x = 16*25+i
+    sewPoints.add(x);sewPoints.add(625+x)
 sewSolver     = TotalSewSolver(    memory, N, len(sewPoints)//2)
 
 
 cells = Delaunay(points).simplices
-volSolver     = VolumeSolver(memory, len(cells))
+volSolver     = VolumeSolver(memory, len(cells), .01)
 
 # pbd
 pbd         = PostionBasedDynamics(memory, camera, N, restIter=15)
@@ -105,22 +105,24 @@ def step(paused, mouse_pos, picked):
             pbd.apply_force(mouse_pos[0], mouse_pos[1], picked)
             shmSolver.solve()
             for _ in range(pbd.iters[None]):
-                volSolver.solve()
-                #stretchSolver.solve()
+                #volSolver.solve()
+                stretchSolver.solve()
                 sewSolver.solve()
             pbd.update()
             pbd.floor_confinement()
+            pbd.ceiling_confinement()
 
 def render(gui, pos2):
     # render
     scale = camera.getScale()
     gui.circles(pos2, radius=1*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
+    gui.line([0, pbd.ceil[None]], [1, pbd.ceil[None]],color=0xffeedd, radius=2*scale )
     gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.2*scale)
     gui.text(content=f'Stiffness={volSolver.K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={pbd.iters[None]}',pos=(0,0.9), color=0xffffff)
     gui.text(content=f'Shape={shmSolver.ALPHA[None]}',pos=(0,0.85), color=0xffffff)
-    gui.text(content=f'Gravity={pbd.gravity[None].value}',pos=(0,0.8), color=0xffffff)
+    gui.text(content=f'Ceiling={pbd.ceil[None]}',pos=(0,0.8), color=0xffffff)
 
 
     
@@ -148,9 +150,9 @@ while gui.running:
     elif gui.is_pressed('.'):
         shmSolver.ALPHA[None] *= 1.1
     if gui.is_pressed("="):
-        pbd.gravity[None][1] /= 1.1
+        pbd.ceil[None] = min(pbd.ceil[None]+.01, 1.)
     elif gui.is_pressed('-'):
-        pbd.gravity[None][1] *= 1.1
+        pbd.ceil[None] = max(pbd.ceil[None]-.01, .01)
     
     render(gui, pos2)
     gui.show()
