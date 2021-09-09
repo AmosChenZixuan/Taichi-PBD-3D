@@ -14,6 +14,7 @@ class PostionBasedDynamics:
 
         self.gravity = field((), 3, ti.f32)
         self.iters   = field((), 1, ti.i32)
+        self.ceil    = field((), 1, ti.f32)
         self.substep = 2 
         self.dt      = 1 / 60 / self.substep 
         self.reItr   = restIter
@@ -21,6 +22,7 @@ class PostionBasedDynamics:
     def reset(self):
         self.gravity[None] = vec3(y=-9.8)
         self.iters[None]   = self.reItr
+        self.ceil[None]    = 1.
 
     def init(self):
         raise NotImplementedError()
@@ -63,6 +65,15 @@ class PostionBasedDynamics:
         for i in range(self.size):
             if mem.curPos[i][1] < 0.:
                 mem.curPos[i][1] = 1e-4
+                mem.vel[i] = vec3()
+        
+    @ti.kernel
+    def ceiling_confinement(self):
+        mem = self.mem
+        ceil = self.ceil[None]
+        for i in range(self.size):
+            if mem.curPos[i][1] > ceil:
+                mem.curPos[i][1] = ceil-1e-4
                 mem.vel[i] = vec3()
 
     @ti.kernel

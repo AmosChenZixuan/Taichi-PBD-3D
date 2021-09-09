@@ -8,9 +8,10 @@ from include import *
 
 @ti.data_oriented
 class VolumeSolver:
-    def __init__(self, memory: Memory, nTets):
+    def __init__(self, memory: Memory, nTets, retStf=1.):
         self.mem  = memory
         self.size = nTets
+        self.retStf = retStf
         
         self.K    = field((), 1, ti.f32)        # stiffness (expansion)
         self.Tets = field(nTets, 4, ti.i32)     # vertices of tetrahedrons
@@ -19,7 +20,7 @@ class VolumeSolver:
         self.NegK = 1.                          # stiffness (compression)
 
     def reset(self):
-        self.K[None] = 1.
+        self.K[None] = self.retStf
 
     def update(self, i, x, y, z, w):
         self.Tets[i] = x,y,z,w
