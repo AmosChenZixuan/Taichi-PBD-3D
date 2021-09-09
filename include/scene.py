@@ -27,13 +27,44 @@ def createRandomCloth(n, center=(0.,0.,0.)):
     z = 1e-5 * np.random.rand(n)+center[2]
     return list(np.vstack([x, y, z]).T)
 
-
 def createRectCloth(w, h, dw, dh, leftbtm=(0.,0.,0.)):
     points = []
     for i in range(w):
         for j in range(h):
             x = dw * i + leftbtm[0]
             y = dh * j + leftbtm[1]
-            z = 1e-5*i*j + leftbtm[2]
+            z = 1e-9*i*j + leftbtm[2]
             points.append([x,y,z])
     return points
+
+def createBowCloth(w, h, dw, dh, radius=.1, leftbtm=(0.,0.,0.), dir=1.):
+    points = []
+    for i in range(w):
+        for j in range(h):
+            x = leftbtm[0] + dw * i #* np.sin(i) * np.cos(j)
+            y = leftbtm[1] + dh * j #* np.sin(i) * np.sin(j)
+            z = leftbtm[2] + ( np.sin(np.pi*(i//w + (j+.5)/h)) + np.sin(np.pi*(j//h + (i+.5)/w)) ) * radius/2 * dir
+            points.append([x,y,z])
+    return points
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    from scipy.spatial import Delaunay
+
+    points = np.array(createBowCloth(50,25,0.02, 0.02, .1,(.25, .25, .5)) + createRectCloth(50,25,0.02, 0.02, (.25, .25, .5)))
+
+    tri = Delaunay(points)
+    ig = plt.figure()
+    ax = plt.axes(projection='3d')
+    # for tr in tri.simplices:
+    #     pts = points[tr, :]
+    #     ax.plot3D(pts[[0,1],0], pts[[0,1],1], pts[[0,1],2], color='g', lw='0.1')
+    #     ax.plot3D(pts[[0,2],0], pts[[0,2],1], pts[[0,2],2], color='g', lw='0.1')
+    #     ax.plot3D(pts[[0,3],0], pts[[0,3],1], pts[[0,3],2], color='g', lw='0.1')
+    #     ax.plot3D(pts[[1,2],0], pts[[1,2],1], pts[[1,2],2], color='g', lw='0.1')
+    #     ax.plot3D(pts[[1,3],0], pts[[1,3],1], pts[[1,3],2], color='g', lw='0.1')
+    #     ax.plot3D(pts[[2,3],0], pts[[2,3],1], pts[[2,3],2], color='g', lw='0.1')
+
+    ax.scatter(points[:,0], points[:,1], points[:,2], color='b')
+    plt.show()

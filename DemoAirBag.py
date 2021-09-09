@@ -20,13 +20,21 @@ class RectClothMesh:
                     self.edges[1].append(cell[j]+offset)
 
 # build scene objects
-edges=[[], []]
-cloth1 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .5)), 0)
-cloth2 = RectClothMesh(createRectCloth(25,25,0.02, 0.02, (.25, .25, .45)), len(cloth1.points))
+points = []
+edges  =[[], []]
+cloth1 = RectClothMesh(createBowCloth(25,25,0.02, 0.02, .2, (.25, .25, .5)), 0)
+cloth2 = RectClothMesh(createBowCloth(25,25,0.02, 0.02, .05,(.25, .25, .5), -1), len(cloth1.points))
+points.extend(cloth1.points); points.extend(cloth2.points)
 edges[0].extend(cloth1.edges[0]); edges[1].extend(cloth1.edges[1])
 edges[0].extend(cloth2.edges[0]); edges[1].extend(cloth2.edges[1])
+# calc cm
+cm = np.zeros(3)
+for p in points:
+    cm += np.array(p)
+points.append(cm/len(points)+[.12,.12,.0])
+points.append(cm/len(points)-[.12,.12,.0])
 
-N = len(cloth1.points) + len(cloth2.points) + 4
+N = len(points) + 4
 
 memory = Memory(N)
 # add floor
@@ -51,7 +59,7 @@ for i in range(25):
 sewSolver     = TotalSewSolver(    memory, N, len(sewPoints)//2)
 
 
-cells = [[25,26,50, 650]]
+cells = Delaunay(points).simplices
 volSolver     = VolumeSolver(memory, len(cells))
 
 # pbd
@@ -66,13 +74,9 @@ def init():
     shmSolver.reset()
     volSolver.reset()
     # mesh
-    for i in range(len(cloth1.points)):
-        memory.update(i, cloth1.points[i], 1.)
+    for i in range(len(points)):
+        memory.update(i, points[i], 1.)
         shmSolver.update(i, i)
-    offset = len(cloth1.points)
-    for i in range(len(cloth2.points)):
-        memory.update(i+offset, cloth2.points[i], 1.)
-        shmSolver.update(i+offset, i+offset)
     shmSolver.init()
 
        
@@ -99,14 +103,13 @@ def step(paused, mouse_pos, picked):
     if not paused:
         for _ in range(pbd.substep):
             pbd.apply_force(mouse_pos[0], mouse_pos[1], picked)
-            pbd.box_confinement()
             shmSolver.solve()
             for _ in range(pbd.iters[None]):
                 volSolver.solve()
-                stretchSolver.solve()
+                #stretchSolver.solve()
                 sewSolver.solve()
-                
             pbd.update()
+            pbd.floor_confinement()
 
 def render(gui, pos2):
     # render

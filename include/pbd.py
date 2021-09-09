@@ -58,6 +58,14 @@ class PostionBasedDynamics:
                 mem.newPos[i][1] = 1e-4
 
     @ti.kernel
+    def floor_confinement(self):
+        mem = self.mem
+        for i in range(self.size):
+            if mem.curPos[i][1] < 0.:
+                mem.curPos[i][1] = 1e-4
+                mem.vel[i] = vec3()
+
+    @ti.kernel
     def project(self, p3: ti.ext_arr(), p2: ti.ext_arr()):
         '''
             Input  p3: np.ndarray, 3d positions
