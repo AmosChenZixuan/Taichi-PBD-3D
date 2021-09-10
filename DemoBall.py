@@ -11,12 +11,10 @@ from UI import Camera, EventHandler
 ti.init(arch=ti.gpu)
 
 # build scene objects
-#s = pygalmesh.Stretch(pygalmesh.Ball([0, 0, 0], 1.0), [2.0, 1.0, .0])
-s = pygalmesh.Ball([0, 0, 0], 1.0)
-mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.5, verbose=False)
-points = np.array(mesh.points)/10 + 0.5
+points, cells = createGalBall(2.)
+#points, cells = createGalCube(.5,.5,.5, 25)
 N = len(points)
-triangulation = mesh.cells[1].data
+triangulation = cells[1].data
 edges=[[], []]
 for tet in triangulation:
     for i in range(4):
