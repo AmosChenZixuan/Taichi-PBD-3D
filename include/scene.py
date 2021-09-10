@@ -72,7 +72,7 @@ def createGalCube(w,h,d, res):
     voxel_size = (0.1, 0.1, 0.1)
 
     mesh = pygalmesh.generate_from_array(
-        vol, voxel_size, max_facet_distance=0.2, max_cell_circumradius=0.5
+        vol, voxel_size, max_facet_distance=0.2, max_cell_circumradius=0.5, verbose=False
     )
     return np.array(mesh.points)/10 + 0.5, mesh.cells
 

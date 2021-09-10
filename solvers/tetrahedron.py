@@ -1,3 +1,6 @@
+'''
+    https://matthias-research.github.io/pages/publications/strainBasedDynamics.pdf
+'''
 import taichi as ti
 from include import *
 
