@@ -41,9 +41,21 @@ def createBowCloth(w, h, dw, dh, radius=.1, leftbtm=(0.,0.,0.), dir=1.):
     points = []
     for i in range(w):
         for j in range(h):
-            x = leftbtm[0] + dw * i #* np.sin(i) * np.cos(j)
-            y = leftbtm[1] + dh * j #* np.sin(i) * np.sin(j)
+            x = leftbtm[0] + dw * i
+            y = leftbtm[1] + dh * j
             z = leftbtm[2] + ( np.sin(np.pi*(i//w + (j+.5)/h)) + np.sin(np.pi*(j//h + (i+.5)/w)) ) * radius/2 * dir
+            points.append([x,y,z])
+    return points
+
+def createIDK(w, h, dw, dh, leftbtm=(0.,0.,0.)):
+    points = []
+    for i in range(w):
+        for j in range(h):
+            x = leftbtm[0] + dw * i
+            y = leftbtm[1] + dh * j
+            z = leftbtm[2] + ( np.sin(np.pi*(i//w + (j+.5)/h)) + np.sin(np.pi*(j//h + (i+.5)/w)) ) /2 * .1
+            points.append([x,y,z])
+            z = 1e-9*i*j + leftbtm[2]
             points.append([x,y,z])
     return points
 

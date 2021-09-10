@@ -73,8 +73,9 @@ def step(paused, mouse_pos, picked):
             for _ in range(pbd.iters[None]):
                 tetSolver.solve()
             shapeSolver.solve()
-            pbd.box_confinement()
             pbd.update()
+            pbd.floor_confinement()
+            pbd.ceiling_confinement()
             
     
 ###
@@ -100,19 +101,20 @@ while gui.running:
     elif gui.is_pressed('.'):
         shapeSolver.ALPHA[None] *= 1.1
     if gui.is_pressed("="):
-        pbd.gravity[None][1] /= 1.1
+        pbd.ceil[None] = min(pbd.ceil[None]+.01, 1.)
     elif gui.is_pressed('-'):
-        pbd.gravity[None][1] *= 1.1
+        pbd.ceil[None] = max(pbd.ceil[None]-.01, .01)
     
     # render
     scale = camera.getScale()
-    #gui.circles(pos2, radius=2*scale, color=0x66ccff)
+    gui.circles(pos2, radius=2*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
-    gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
+    #gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
+    gui.line([0, pbd.ceil[None]], [1, pbd.ceil[None]],color=0xffeedd, radius=2*scale )
     gui.text(content=f'Stiffness={tetSolver.K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={pbd.iters[None]}',pos=(0,0.9), color=0xffffff)
     gui.text(content=f'Shape={shapeSolver.ALPHA[None]}',pos=(0,0.85), color=0xffffff)
-    gui.text(content=f'Gravity={pbd.gravity[None].value}',pos=(0,0.8), color=0xffffff)
+    gui.text(content=f'Ceiling={pbd.ceil[None]}',pos=(0,0.8), color=0xffffff)
     gui.show()
     # sim
     step(eventHandler.paused, eventHandler.mouse_pos, eventHandler.picked)
