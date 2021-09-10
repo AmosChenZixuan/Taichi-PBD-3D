@@ -15,7 +15,10 @@ def angle_axis(direction, angle):
         return result
 
 def quaternion(float4):
-    return Rotation.from_quat(float4)
+    try:
+        return Rotation.from_quat(float4)
+    except:
+        return Rotation.from_quat(np.array([0., 0., 0., 1.]))
 
 def qmul(q1, q2):
     # quaternion multiplication
