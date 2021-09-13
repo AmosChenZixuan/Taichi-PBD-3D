@@ -25,6 +25,7 @@ camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
 NC            = len(triangulation)           # number of constraint
 tetSolver     = VolumeSolver(memory, N-4, NC, .8)
+tetSolver2     = TetrahedronSolver(memory, N-4, NC)
 # shape
 stretchSolver = TotalStretchSolver( memory, N, len(edges[0])-5, restStiff=1.)
 shapeSolver   = ShapeMatchingSolver(memory, N-4, .2)
@@ -36,6 +37,7 @@ def init():
     pbd.reset()
     # reset solvers
     tetSolver.reset()
+    tetSolver2.reset()
     shapeSolver.reset()
 
     # mesh
@@ -50,7 +52,9 @@ def init():
     for i in range(NC):
         x,y,z,w = triangulation[i]
         tetSolver.update(i, x,y,z,w)
+        tetSolver2.update(i, x,y,z,w)
     tetSolver.init()
+    tetSolver2.init()
 
     for i in range(len(edges[0])-5):
          stretchSolver.update(i, edges[0][i], edges[1][i])
@@ -67,9 +71,10 @@ def step(paused, mouse_pos, picked):
     if not paused:
         for _ in range(pbd.substep):
             pbd.apply_force(mouse_pos[0], mouse_pos[1], picked)
-            shapeSolver.solve()
+            #shapeSolver.solve()
             for _ in range(pbd.iters[None]):
                 tetSolver.solve()
+                tetSolver2.solve()
                 stretchSolver.solve()
             pbd.update()
             pbd.floor_confinement()
