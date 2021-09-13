@@ -3,7 +3,6 @@
 '''
 import taichi as ti # 0.7.29
 import numpy as np
-import pygalmesh
 
 from include import *
 from solvers import *
@@ -12,15 +11,10 @@ ti.init(arch=ti.gpu)
 
 # build scene objects
 points, cells = createGalBall(2.)
-#points, cells = createGalCube(.5,.5,.5, 25)
 N = len(points)
 triangulation = cells[1].data
-edges=[[], []]
-for tet in triangulation:
-    for i in range(4):
-        for j in range(i+1, 4):
-            edges[0].append(tet[i])
-            edges[1].append(tet[j])
+edges         = getEdges(triangulation)
+surfaceVert   = getSurfaceVertices(cells[0].data)
 
 # Allocate memory
 N = N+4   # number of particles; plus one for floor
@@ -32,8 +26,7 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
 NC            = len(triangulation)           # number of constraint
-tetSolver   = VolumeSolver(memory, NC)
-#tetSolver   = TetrahedronSolver(memory, N-4, NC)
+tetSolver   = VolumeSolver(memory, N-4, NC)
 # shape
 shapeSolver = ShapeMatchingSolver(memory, N-4)
 # pbd
@@ -47,10 +40,10 @@ def init():
     shapeSolver.reset()
 
     # mesh
-    offset = 0
     for i in range(N-4):
         memory.update(i, points[i], 1.)
-        shapeSolver.update(i, offset+i)
+    for i,j in enumerate(surfaceVert):
+        shapeSolver.update(i, j)
     shapeSolver.init()
 
     # constraint
@@ -70,9 +63,9 @@ def step(paused, mouse_pos, picked):
     if not paused:
         for _ in range(pbd.substep):
             pbd.apply_force(mouse_pos[0], mouse_pos[1], picked)
+            shapeSolver.solve()
             for _ in range(pbd.iters[None]):
                 tetSolver.solve()
-            shapeSolver.solve()
             pbd.update()
             pbd.floor_confinement()
             pbd.ceiling_confinement()
@@ -109,7 +102,7 @@ while gui.running:
     scale = camera.getScale()
     gui.circles(pos2, radius=2*scale, color=0x66ccff)
     #gui.circle(camera.project(camera.getFocus()), radius=1*scale, color=0xff0000)
-    #gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
+    gui.lines(pos2[edges[0]], pos2[edges[1]], color=0xffeedd, radius=.5*scale)
     gui.line([0, pbd.ceil[None]], [1, pbd.ceil[None]],color=0xffeedd, radius=2*scale )
     gui.text(content=f'Stiffness={tetSolver.K[None]}',pos=(0,0.95), color=0xffffff)
     gui.text(content=f'Iteration={pbd.iters[None]}',pos=(0,0.9), color=0xffffff)

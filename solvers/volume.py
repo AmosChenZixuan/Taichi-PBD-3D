@@ -8,7 +8,7 @@ from include import *
 
 @ti.data_oriented
 class VolumeSolver:
-    def __init__(self, memory: Memory, nTets, retStf=1.):
+    def __init__(self, memory: Memory, nParticles, nTets, retStf=1.):
         self.mem  = memory
         self.size = nTets
         self.retStf = retStf
@@ -16,14 +16,21 @@ class VolumeSolver:
         self.K    = field((), 1, ti.f32)        # stiffness (expansion)
         self.Tets = field(nTets, 4, ti.i32)     # vertices of tetrahedrons
         self.V0   = field(nTets, 1, ti.f32) # rest postion matrix inversed
-
+        self.dp   = field(nParticles, 3, ti.f32)# postion delta  
+        self.w    = field(nParticles, 1, ti.i32)# weights; number of springs on each vertex 
+        
         self.NegK = 1.                          # stiffness (compression)
 
     def reset(self):
         self.K[None] = self.retStf
+        self.w.fill(0)
 
     def update(self, i, x, y, z, w):
         self.Tets[i] = x,y,z,w
+        self.w[x] += 1#4**2
+        self.w[y] += 1#4**2
+        self.w[z] += 1#4**2
+        self.w[w] += 1#4**2
 
     def init(self):
         self.initRestVolume()
@@ -31,7 +38,9 @@ class VolumeSolver:
 
     #@timeThis
     def solve(self):
-        self.solveVolume()
+        self.clearDelta()
+        self.calcDelta()
+        self.applyDelta()
 
     ################### Private Methods #####################
 
@@ -45,8 +54,11 @@ class VolumeSolver:
                 (pw-px).dot((pz-px).cross(py-px))
             )
 
+    def clearDelta(self):
+        self.dp.fill(0)
+
     @ti.kernel
-    def solveVolume(self):
+    def calcDelta(self):
         mem = self.mem
         eps = 1e-9
         for i in range(self.size):
@@ -67,8 +79,17 @@ class VolumeSolver:
                 k = self.K[None]
                 vlambda = k * (v-self.V0[i]) / gradSum
 
-                mem.newPos[x] -= vlambda * mem.invM[x] * d0
-                mem.newPos[y] -= vlambda * mem.invM[y] * d1
-                mem.newPos[z] -= vlambda * mem.invM[z] * d2
-                mem.newPos[w] -= vlambda * mem.invM[w] * d3
+                self.dp[x] -= vlambda * mem.invM[x] * d0
+                self.dp[y] -= vlambda * mem.invM[y] * d1
+                self.dp[z] -= vlambda * mem.invM[z] * d2
+                self.dp[w] -= vlambda * mem.invM[w] * d3
 
+    @ti.kernel
+    def applyDelta(self):
+        mem = self.mem
+        for i in range(self.size):
+            x,y,z,w  = self.Tets[i]
+            mem.newPos[x] += self.dp[x] / self.w[x]
+            mem.newPos[y] += self.dp[y] / self.w[y]
+            mem.newPos[z] += self.dp[z] / self.w[z]
+            mem.newPos[w] += self.dp[w] / self.w[w]
