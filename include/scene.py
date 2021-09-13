@@ -66,19 +66,26 @@ def createGalCube(w,h,d, res):
     x, y, z = np.meshgrid(x_, y_, z_)
 
     vol = np.empty((res, res, res), dtype=np.uint8)
-    idx = abs(x) + abs(y) + abs(z) < 1.5
+    idx = abs(x) + abs(y) + abs(z) < 10
     vol[idx] = 1
     vol[~idx] = 0
     voxel_size = (0.1, 0.1, 0.1)
 
     mesh = pygalmesh.generate_from_array(
-        vol, voxel_size, max_facet_distance=0.2, max_cell_circumradius=0.5, verbose=False
+        vol, voxel_size, max_facet_distance=0.2, max_cell_circumradius=0.4, verbose=False
     )
     return np.array(mesh.points)/10 + 0.5, mesh.cells
 
-def createGalBall(r=1.):
+def createGalBall(r=1., surface=False):
     s = pygalmesh.Ball([0, 0, 0], r)
-    mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.5, verbose=False)
+    if surface:
+        mesh = pygalmesh.generate_surface_mesh(s,
+            min_facet_angle=30.0,
+            max_radius_surface_delaunay_ball=0.5,
+            max_facet_distance=0.1, verbose=False
+        )
+    else:
+        mesh = pygalmesh.generate_mesh(s, max_cell_circumradius=0.5, verbose=False)
     return np.array(mesh.points)/10 + 0.5, mesh.cells
 
 if __name__ == '__main__':

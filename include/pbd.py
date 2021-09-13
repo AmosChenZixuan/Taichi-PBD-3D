@@ -55,9 +55,12 @@ class PostionBasedDynamics:
     @ti.kernel
     def box_confinement(self):
         mem = self.mem
+        ceil = self.ceil[None]
         for i in range(self.size):
             if mem.newPos[i][1] < 0.:
                 mem.newPos[i][1] = 1e-4
+            if mem.newPos[i][1] > ceil:
+                mem.newPos[i][1] = ceil-1e-4
 
     @ti.kernel
     def floor_confinement(self):

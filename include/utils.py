@@ -30,6 +30,27 @@ def flatten(v3):
     u, v = x, y * ct + z * st
     return vec2(u,v) * 1. +.5
 
+def getEdges(tri):
+    pool = set()
+    s, e = [], []  # edge start / end
+    for cell in tri:
+        for i in range(len(cell)):
+            for j in range(i+1, len(cell)):
+                a,b = cell[i], cell[j]
+                if a > b:
+                    a,b = b,a
+                pool.add((a,b))
+    for edge in pool:
+        s.append(edge[0]); e.append(edge[1])
+    return [s,e]
+
+def getSurfaceVertices(surface_tri):
+    pool = set()
+    for cell in surface_tri:
+        for i in range(len(cell)):
+            pool.add(cell[i])
+    return pool
+
 
 # @ti.pyfunc
 # def tri_norm(i1,i2,i3):

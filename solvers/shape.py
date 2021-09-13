@@ -34,7 +34,7 @@ def qmul(q1, q2):
 class ShapeMatchingSolver:
     def __init__(self, memory: Memory, nParticles):
         self.mem  = memory
-        self.size = nParticles
+        self.size = field((), 1, ti.f32)  
         self.ptr  = field(nParticles, 1, ti.i32)
 
         self.CM   = field((), 3, ti.f32)            # center of mass
@@ -46,11 +46,13 @@ class ShapeMatchingSolver:
         self.ALPHA = field((), 1, ti.f32)           # stiffness
 
     def reset(self):
+        self.size[None] = 0
         self.ALPHA[None] = .1
         self.quat = np.array([0., 0., 0., 1.])
 
     def update(self, i, idx):
         self.ptr[i] = idx
+        self.size[None] = i+1
 
     def init(self):
         self.updateCM()
@@ -69,7 +71,7 @@ class ShapeMatchingSolver:
 
     @ti.kernel
     def initQ0(self):
-        for x in range(self.size):
+        for x in range(self.size[None]):
             i = self.ptr[x]
             self.Q0[i] = self.Q[i]
 
@@ -78,7 +80,7 @@ class ShapeMatchingSolver:
         mem = self.mem
         cm  = vec3()
         m   = 0.
-        for x in range(self.size):
+        for x in range(self.size[None]):
             i = self.ptr[x]
             mass = 1. if mem.invM[i]==0. else 1./mem.invM[i]
             cm += mem.newPos[i] * mass
@@ -88,14 +90,14 @@ class ShapeMatchingSolver:
     @ti.kernel
     def updateQ(self):
         mem = self.mem
-        for x in range(self.size):
+        for x in range(self.size[None]):
             i = self.ptr[x]
             self.Q[i] = mem.newPos[i] - self.CM[None]
     
     @ti.kernel
     def calcApq(self):
         A = mat3()
-        for x in range(self.size):
+        for x in range(self.size[None]):
             i = self.ptr[x]
             A += self.Q[i] @ self.Q0[i].transpose()
         self.Apq[None] = A
@@ -126,7 +128,7 @@ class ShapeMatchingSolver:
     @ti.kernel
     def updateDelta(self):
         mem = self.mem
-        for x in range(self.size):
+        for x in range(self.size[None]):
             i = self.ptr[x]
             p = self.R[None] @ self.Q0[i] + self.CM[None]
             mem.newPos[i] += (p - mem.newPos[i]) * self.ALPHA[None] 
