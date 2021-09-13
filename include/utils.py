@@ -30,7 +30,7 @@ def flatten(v3):
     u, v = x, y * ct + z * st
     return vec2(u,v) * 1. +.5
 
-def getEdges(tri):
+def getEdges(tri, offset=0):
     pool = set()
     s, e = [], []  # edge start / end
     for cell in tri:
@@ -41,7 +41,7 @@ def getEdges(tri):
                     a,b = b,a
                 pool.add((a,b))
     for edge in pool:
-        s.append(edge[0]); e.append(edge[1])
+        s.append(edge[0]+offset); e.append(edge[1]+offset)
     return [s,e]
 
 def getSurfaceVertices(surface_tri):

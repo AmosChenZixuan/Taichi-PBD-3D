@@ -12,12 +12,7 @@ class RectClothMesh:
         self.points = vert
         points2d = np.array([flatten(x) for x in vert])
         self.cells  = Delaunay(points2d).simplices
-        self.edges=[[], []]
-        for cell in self.cells:
-            for i in range(3):
-                for j in range(i+1, 3):
-                    self.edges[0].append(cell[i]+offset)
-                    self.edges[1].append(cell[j]+offset)
+        self.edges  = getEdges(self.cells, offset)
 
 # build scene objects
 edges=[[], []]
