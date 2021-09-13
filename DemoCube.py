@@ -9,7 +9,7 @@ ti.init(arch=ti.gpu)
 
 
 # build scene objects
-points, cells = createGalCube(.5,.5,.5, 25)
+points, cells = createGalCube((.35,.35,.35), 30)
 N = len(points)
 triangulation = cells[1].data
 edges         = getEdges(triangulation)
@@ -24,10 +24,10 @@ edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
 # volume 
 NC            = len(triangulation)           # number of constraint
-tetSolver     = VolumeSolver(memory, NC)
+tetSolver     = VolumeSolver(memory, N-4, NC, .8)
 # shape
 stretchSolver = TotalStretchSolver( memory, N, len(edges[0])-5, restStiff=1.)
-shapeSolver   = ShapeMatchingSolver(memory, N-4)
+shapeSolver   = ShapeMatchingSolver(memory, N-4, .2)
 # pbd
 pbd         = PostionBasedDynamics(memory, camera, N)
 
@@ -41,8 +41,9 @@ def init():
     # mesh
     for i in range(N-4):
         memory.update(i, points[i], 1.)
-    for i,j in enumerate(surfaceVert):
-        shapeSolver.update(i, j)
+        shapeSolver.update(i, i)
+    # for i,j in enumerate(surfaceVert):
+    #     shapeSolver.update(i, j)
     shapeSolver.init()
 
     # constraint

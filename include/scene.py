@@ -59,22 +59,22 @@ def createIDK(w, h, dw, dh, leftbtm=(0.,0.,0.)):
             points.append([x,y,z])
     return points
 
-def createGalCube(w,h,d, res):
-    x_ = np.linspace(.0, w, res)
-    y_ = np.linspace(.0, h, res)
-    z_ = np.linspace(.0, d, res)
+def createGalCube(pos, res):
+    x_ = np.linspace(.0, 1., res)
+    y_ = np.linspace(.0, 1., res)
+    z_ = np.linspace(.0, 1., res)
     x, y, z = np.meshgrid(x_, y_, z_)
 
     vol = np.empty((res, res, res), dtype=np.uint8)
-    idx = abs(x) + abs(y) + abs(z) < 10
+    idx = abs(x) + abs(y) + abs(z) < 5
     vol[idx] = 1
     vol[~idx] = 0
     voxel_size = (0.1, 0.1, 0.1)
 
     mesh = pygalmesh.generate_from_array(
-        vol, voxel_size, max_facet_distance=0.2, max_cell_circumradius=0.4, verbose=False
+        vol, voxel_size, max_facet_distance=.2, max_cell_circumradius=0.4, verbose=False
     )
-    return np.array(mesh.points)/10 + 0.5, mesh.cells
+    return np.array(mesh.points)/10 + pos, mesh.cells
 
 def createGalBall(r=1., surface=False):
     s = pygalmesh.Ball([0, 0, 0], r)

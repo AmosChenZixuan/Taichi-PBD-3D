@@ -32,8 +32,9 @@ def qmul(q1, q2):
 
 @ti.data_oriented
 class ShapeMatchingSolver:
-    def __init__(self, memory: Memory, nParticles):
+    def __init__(self, memory: Memory, nParticles, rstStf=.1):
         self.mem  = memory
+        self.rstf = rstStf
         self.size = field((), 1, ti.f32)  
         self.ptr  = field(nParticles, 1, ti.i32)
 
@@ -47,7 +48,7 @@ class ShapeMatchingSolver:
 
     def reset(self):
         self.size[None] = 0
-        self.ALPHA[None] = .1
+        self.ALPHA[None] = self.rstf
         self.quat = np.array([0., 0., 0., 1.])
 
     def update(self, i, idx):
