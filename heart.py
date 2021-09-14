@@ -19,16 +19,16 @@ class Heart(pygalmesh.DomainBase):
 
     def eval(self, x):
         return (
-            (x[0] ** 2 + 9.0 / 4.0 * x[1] ** 2 + x[2] ** 2 - 1) ** 3
-            - x[0] ** 2 * x[2] ** 3
-            - 9.0 / 80.0 * x[1] ** 2 * x[2] ** 3
+            (x[0] ** 2 + 9.0 / 4.0 * x[2] ** 2 + x[1] ** 2 - 1) ** 3
+            - x[0] ** 2 * x[1] ** 3
+            - 9.0 / 80.0 * x[2] ** 2 * x[1] ** 3
         )
 
     def get_bounding_sphere_squared_radius(self):
         return 10.0
 
 d = Heart()
-mesh = pygalmesh.generate_mesh(d, max_cell_circumradius=0.3)
+mesh = pygalmesh.generate_mesh(d, max_cell_circumradius=0.3, verbose=False)
 
 points = np.array(mesh.points)/10 + 0.5
 N = len(points)
