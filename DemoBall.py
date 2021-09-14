@@ -23,10 +23,10 @@ memory = Memory(N)
 edges[0].extend([N-4,N-3,N-2,N-1, N-4])
 edges[1].extend([N-3,N-2,N-1,N-4, N-2])
 # camera
-camera = Camera(focus=(.5, .5,.5), angle=(5., 1.), scale=.8)
+camera = Camera(focus=(.5, .5,.5), angle=(0., 0.), scale=1.)
 # volume 
 NC            = len(triangulation)           # number of constraint
-tetSolver   = VolumeSolver(memory, N-4, NC)
+tetSolver   = VolumeSolver(memory, N-4, NC, .7)
 # shape
 shapeSolver = ShapeMatchingSolver(memory, N-4)
 # pbd
@@ -42,8 +42,9 @@ def init():
     # mesh
     for i in range(N-4):
         memory.update(i, points[i], 1.)
-    for i,j in enumerate(surfaceVert):
-        shapeSolver.update(i, j)
+        shapeSolver.update(i, i)
+    # for i,j in enumerate(surfaceVert):
+    #     shapeSolver.update(i, j)
     shapeSolver.init()
 
     # constraint
@@ -97,6 +98,8 @@ while gui.running:
         pbd.ceil[None] = min(pbd.ceil[None]+.01, 1.)
     elif gui.is_pressed('-'):
         pbd.ceil[None] = max(pbd.ceil[None]-.01, .01)
+    elif gui.is_pressed('0'):
+        pbd.ceil[None] = 1.
     
     # render
     scale = camera.getScale()
