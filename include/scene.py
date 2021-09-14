@@ -47,6 +47,16 @@ def createBowCloth(w, h, dw, dh, radius=.1, leftbtm=(0.,0.,0.), dir=1.):
             points.append([x,y,z])
     return points
 
+def createSemiSphereCloth(w, h, dw, dh, radius=.1, leftbtm=(0.,0.,0.), dir=1.):
+    points = []
+    for i in range(w):
+        for j in range(h):
+            x = leftbtm[0] + dw * i
+            y = leftbtm[1] + dh * j
+            z = leftbtm[2] + max(( np.sin(np.pi*(i//w + (j+.5)/h)) + np.sin(np.pi*(j//h + (i+.5)/w)) -1.1 ), 0) * radius * dir
+            points.append([x,y,z])
+    return points
+
 def createIDK(w, h, dw, dh, leftbtm=(0.,0.,0.)):
     points = []
     for i in range(w):
@@ -80,8 +90,8 @@ def createGalBall(r=1., surface=False):
     s = pygalmesh.Ball([0, 0, 0], r)
     if surface:
         mesh = pygalmesh.generate_surface_mesh(s,
-            min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=0.5,
+            min_facet_angle=15.0,
+            max_radius_surface_delaunay_ball=0.3,
             max_facet_distance=0.1, verbose=False
         )
     else:
@@ -92,7 +102,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from scipy.spatial import Delaunay
 
-    points = np.array(createBowCloth(50,25,0.02, 0.02, .1,(.25, .25, .5)) + createRectCloth(50,25,0.02, 0.02, (.25, .25, .5)))
+    points = np.array(createSemiSphereCloth(50,25,0.02, 0.02, .1,(.25, .25, .5)) + createRectCloth(50,25,0.02, 0.02, (.25, .25, .5)))
 
     tri = Delaunay(points)
     ig = plt.figure()

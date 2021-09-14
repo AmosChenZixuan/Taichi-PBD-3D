@@ -40,6 +40,7 @@ class ClothBalloonSolver:
 
 
     def init(self):
+        assert len(self.points) == self.size[0]
         self.clearCache()
         self.updateVolume()
         self.Vol[0] = self.Vol[1]   # assign rest volume
@@ -67,6 +68,7 @@ class ClothBalloonSolver:
             x, y, z     = self.Tris[i]
             px,py,pz    = mem.newPos[x], mem.newPos[y], mem.newPos[z]
             self.Vol[1] += px.cross(py).dot(pz)
+        #print(self.Vol[1])
 
     @ti.kernel
     def updateGradients(self):

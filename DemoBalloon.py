@@ -91,6 +91,8 @@ while gui.running:
         pbd.ceil[None] = min(pbd.ceil[None]+.01, 1.)
     elif gui.is_pressed('-'):
         pbd.ceil[None] = max(pbd.ceil[None]-.01, .01)
+    elif gui.is_pressed('0'):
+        pbd.ceil[None] = 1.
     
     # render
     scale = camera.getScale()
