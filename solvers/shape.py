@@ -39,8 +39,8 @@ class ShapeMatchingSolver:
         self.ptr  = field(nParticles, 1, ti.i32)
 
         self.CM   = field((), 3, ti.f32)            # center of mass
-        self.Q    = field(nParticles, 3, ti.f32)    # position matrix
-        self.Q0   = field(nParticles, 3, ti.f32)    # rest postion mat
+        self.Q    = field(memory.size, 3, ti.f32)    # position matrix
+        self.Q0   = field(memory.size, 3, ti.f32)    # rest postion mat
         self.Apq  = field((), (3,3), ti.f32)        # deformation matrix
         self.R    = field((), (3,3), ti.f32)        # rotation matrix
         self.quat = np.array([0., 0., 0., 1.])      # rotation as quaternion 
