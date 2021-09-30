@@ -7,7 +7,7 @@ from include.data import *
 
 @ti.data_oriented
 class PostionBasedDynamics:
-    def __init__(self, memory:Memory, camera:Camera, nParticle, restIter=3):
+    def __init__(self, memory:Memory, camera:Camera=None, nParticle=2*10, restIter=3):
         self.mem  = memory
         self.cam  = camera
         self.size = nParticle
@@ -20,7 +20,7 @@ class PostionBasedDynamics:
         self.reItr   = restIter
 
     def reset(self):
-        self.gravity[None] = vec3(y=-9.8)
+        self.gravity[None] = vec3()
         self.iters[None]   = self.reItr
         self.ceil[None]    = 1.
 
